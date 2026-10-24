@@ -1,0 +1,790 @@
+'use strict';
+const path = require('path');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, dialog, shell, systemPreferences, clipboard, screen } = require('electron');
+const { Store } = require('./store');
+const { RealtimeTranscriber } = require('./realtime');
+const { writeLetter } = require('./redaction');
+const { applyLocalPunctuation } = require('./punctuation');
+const { pasteIntoActiveApp, pressHotkey } = require('./inject');
+const { audioCost, textCost } = require('./pricing');
+const { LocalWhisper, recommendedModelId } = require('./local-whisper');
+const { correctTranscript } = require('./corrections');
+
+app.setName('Dictopen');
+
+// une seule instance : une seconde ouverture ramène la barre au premier plan
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => { if (barWin) { barWin.showInactive(); } else { createBar(); } });
+}
+
+let store;
+let barWin = null;
+let settingsWin = null;
+let tray = null;
+const rt = new RealtimeTranscriber();
+
+// --- état ---
+let state = 'idle'; // idle | connecting | listening | transcribing | writing | error
+let recording = false;
+let audioBytes = 0; // octets PCM16 24 kHz envoyés pour l'énoncé en cours (48 000 o/s)
+let peakLevel = 0; // niveau crête observé pendant l'énoncé (0..1) : détection de silence
+let lastInjected = '';
+let lastText = '';
+let draft = ''; // mode courrier : dictée accumulée (brute)
+let lastLetter = ''; // mode courrier : dernier courrier rédigé (pour les corrections)
+let micStatus = { connected: false, name: '' };
+let panelShown = false; // zone de texte de la barre (masquée par défaut : barre fine)
+let localWhisper = null; // moteur local (whisper.cpp)
+let pcmChunks = []; // audio de l'énoncé en cours, conservé seulement en transcription locale
+let audioDevice = '';
+let rightsDialogShown = false;
+
+const BYTES_PER_SECOND = 24000 * 2;
+const SILENCE_PEAK = 0.04; // en dessous : pas de parole (bruit de fond)
+
+// Hallucinations typiques de whisper sur du bruit ou du silence.
+const WHISPER_HALLUCINATIONS = [/sous-titres? (réalisés?|par)/i, /amara\.org/i, /merci d'avoir regardé/i, /abonnez-vous/i, /^\s*\[[^\]]*\]\s*$/, /^\s*\([^)]*\)\s*$/, /^\s*\.+\s*$/];
+function looksLikeHallucination(text) {
+  return WHISPER_HALLUCINATIONS.some((re) => re.test(text));
+}
+
+// Les modèles de transcription recrachent parfois le texte du contexte quand l'audio ne contient pas de parole.
+function looksLikePromptEcho(transcript, prompt) {
+  const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2);
+  const t = norm(transcript);
+  const p = new Set(norm(prompt));
+  if (t.length < 6 || p.size === 0) return false;
+  const inPrompt = t.filter((w) => p.has(w)).length / t.length;
+  return inPrompt >= 0.85;
+}
+
+function send(channel, payload) {
+  for (const w of [barWin, settingsWin]) {
+    if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+  }
+}
+
+function setState(s, detail) {
+  state = s;
+  send('state', { state: s, detail: detail || '', recording, mode: store.settings.mode, provider: store.currentProvider(), hasDraft: !!draft, hasLetter: !!lastLetter, mic: micStatus, audioDevice, hotkey: store.settings.hotkeyLabels.toggleRecording || store.settings.hotkeys.toggleRecording || '' });
+}
+
+function notice(level, message) {
+  console[level === 'error' ? 'error' : 'log'](message);
+  send('notice', { level, message });
+}
+
+function sendDraft() {
+  send('draft', { text: draft, letter: lastLetter });
+}
+
+// --- fenêtres ---
+// diagnostic des fenêtres : erreurs de chargement, plantages du rendu, console (niveaux warn/error)
+function watchWindow(win, label) {
+  const wc = win.webContents;
+  wc.on('did-fail-load', (_e, code, desc, url) => console.error(`${label} : échec de chargement ${code} ${desc} ${url}`));
+  wc.on('render-process-gone', (_e, details) => console.error(`${label} : rendu interrompu`, details));
+  wc.on('console-message', (ev) => {
+    const level = typeof ev === 'object' && ev.level ? ev.level : 'info';
+    const message = typeof ev === 'object' && ev.message !== undefined ? ev.message : String(ev);
+    if (level === 'error' || level === 'warning') console.log(`${label} console[${level}] : ${message} (${ev.sourceId || ''}:${ev.lineNumber || ''})`);
+  });
+  wc.on('preload-error', (_e, p, err) => console.error(`${label} : erreur preload ${p}`, err.message));
+}
+
+function createBar() {
+  const { x, y } = store.settings.bar;
+  const display = screen.getPrimaryDisplay().workArea;
+  barWin = new BrowserWindow({
+    width: barSize()[0],
+    height: barSize()[1],
+    x: Number.isFinite(x) ? x : display.x + display.width - 480,
+    y: Number.isFinite(y) ? y : display.y + 20,
+    frame: false,
+    transparent: false,
+    alwaysOnTop: true,
+    focusable: false, // la fenêtre cible garde le focus : le texte se colle chez elle
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: true,
+    backgroundColor: '#1e1f24',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+  });
+  barWin.setAlwaysOnTop(true, 'floating');
+  barWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  watchWindow(barWin, 'barre');
+  barWin.loadFile(path.join(__dirname, '..', 'renderer', 'bar.html'));
+  barWin.on('moved', () => {
+    const [bx, by] = barWin.getPosition();
+    store.saveSettings({ bar: { x: bx, y: by } });
+  });
+  barWin.on('closed', () => { barWin = null; });
+  barWin.webContents.on('did-finish-load', () => {
+    barWin.webContents.send('panel', { show: panelShown });
+    setState(state);
+    sendDraft();
+    send('usage', store.usage);
+    if (store.settings.transcription.keepMicrophoneOpen) barWin.webContents.send('capture', { cmd: 'open', deviceId: store.settings.transcription.microphoneId });
+  });
+}
+
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    width: 780,
+    height: 860,
+    title: 'Réglages — Dictopen',
+    backgroundColor: '#f4f4f6',
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+  });
+  watchWindow(settingsWin, 'réglages');
+  settingsWin.loadFile(path.join(__dirname, '..', 'renderer', 'settings.html'));
+  settingsWin.on('closed', () => { settingsWin = null; });
+}
+
+// dimensions de la barre : fine ou avec la zone de texte ; plus large en mode Courrier (deux boutons de plus)
+function barSize() {
+  const win = process.platform === 'win32';
+  const width = (store.settings.mode === 'courrier' ? 480 : 400) + (win ? 40 : 0);
+  const height = panelShown ? (win ? 200 : 190) : (win ? 76 : 70);
+  return [width, height];
+}
+
+function applyBarSize() {
+  if (!barWin) return;
+  const [w, h] = barSize();
+  barWin.setSize(w, h);
+}
+
+function setPanel(show) {
+  panelShown = !!show;
+  if (!barWin) return;
+  applyBarSize();
+  barWin.webContents.send('panel', { show: panelShown });
+}
+
+function toggleBar() {
+  if (!barWin) return createBar();
+  if (barWin.isVisible()) barWin.hide(); else barWin.showInactive();
+}
+
+// menu d'application : sans lui, Cmd+C / Cmd+V ne fonctionnent pas dans les fenêtres Electron sur macOS
+function createAppMenu() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: app.name, submenu: [{ label: 'Réglages…', accelerator: 'Cmd+,', click: openSettings }, { type: 'separator' }, { role: 'hide' }, { role: 'quit', label: 'Quitter' }] },
+    { label: 'Édition', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut', label: 'Couper' }, { role: 'copy', label: 'Copier' }, { role: 'paste', label: 'Coller' }, { role: 'selectAll', label: 'Tout sélectionner' }] },
+    { label: 'Fenêtre', submenu: [{ label: 'Afficher / masquer la barre', click: toggleBar }, { role: 'close' }] },
+  ]));
+}
+
+// lancement à l'ouverture de session (macOS : élément de connexion ; Windows : clé Run)
+function applyLaunchAtLogin() {
+  if (!app.isPackaged) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!store.settings.launchAtLogin, openAsHidden: true });
+  } catch (e) {
+    console.warn('lancement à la session', e.message);
+  }
+}
+
+function createTray() {
+  const icon = nativeImage.createFromDataURL(TRAY_ICON).resize({ width: 18, height: 18 });
+  if (process.platform === 'darwin') icon.setTemplateImage(true);
+  tray = new Tray(icon);
+  tray.setToolTip('Dictopen');
+  const refresh = () => tray.setContextMenu(Menu.buildFromTemplate([
+    { label: barWin && barWin.isVisible() ? 'Masquer la barre' : 'Afficher la barre', click: toggleBar },
+    { label: store.settings.mode === 'courrier' ? 'Mode : Courrier (→ Dictée directe)' : 'Mode : Dictée directe (→ Courrier)', click: toggleMode },
+    { type: 'separator' },
+    { label: `Consommation : ${store.usage.usd.toFixed(2)} $`, enabled: false },
+    { label: 'Réglages…', click: openSettings },
+    { type: 'separator' },
+    { label: 'Quitter', click: () => app.quit() },
+  ]));
+  refresh();
+  tray.on('click', refresh);
+  tray.refresh = refresh;
+}
+
+// icône de barre de menus : un micro, 36×36, noir (template)
+const TRAY_ICON = 'data:image/svg+xml;base64,' + Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24"><path fill="${process.platform === 'darwin' ? '#000' : '#fff'}" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>`
+).toString('base64');
+
+// --- raccourcis globaux ---
+function registerHotkeys() {
+  globalShortcut.unregisterAll();
+  const h = store.settings.hotkeys;
+  const reg = (acc, fn, label) => {
+    if (!acc) return;
+    try {
+      if (!globalShortcut.register(acc, fn)) notice('warn', `Raccourci « ${acc} » (${label}) indisponible`);
+    } catch (e) {
+      notice('warn', `Raccourci « ${acc} » invalide : ${e.message}`);
+    }
+  };
+  reg(h.toggleRecording, () => toggleRecording(), 'dictée');
+  reg(h.toggleBar, toggleBar, 'barre');
+  reg(h.toggleMode, toggleMode, 'mode');
+  reg(h.rediger, () => rediger(), 'rédiger');
+  reg(h.newDraft, newDraft, 'nouveau courrier');
+  reg(h.copyLastText, copyLastText, 'copier');
+}
+
+function toggleMode() {
+  setMode(store.settings.mode === 'courrier' ? 'direct' : 'courrier');
+}
+
+function setMode(mode) {
+  if (mode !== 'direct' && mode !== 'courrier') return;
+  if (recording) cancelRecording();
+  store.saveSettings({ mode });
+  rt.close(); // le modèle de transcription peut différer : la session sera rouverte (le moteur local reste chargé)
+  applyBarSize();
+  setState('idle');
+  if (tray) tray.refresh();
+  console.log(mode === 'courrier' ? 'Mode Courrier' : 'Mode Dictée directe');
+}
+
+function copyLastText() {
+  const t = store.settings.mode === 'courrier' ? (lastLetter || draft) : lastText;
+  if (t) { clipboard.writeText(t); notice('info', 'Texte copié'); }
+}
+
+function newDraft() {
+  draft = '';
+  lastLetter = '';
+  lastInjected = '';
+  sendDraft();
+  setState(state === 'listening' ? state : 'idle', 'nouveau courrier');
+}
+
+// --- moteur local ---
+function localModelId() {
+  return store.settings.local.modelId || recommendedModelId();
+}
+
+function setupLocalWhisper() {
+  const binDir = app.isPackaged
+    ? path.join(process.resourcesPath, `${process.platform}-${process.arch}`)
+    : path.join(__dirname, '..', 'bin', `${process.platform}-${process.arch}`);
+  localWhisper = new LocalWhisper({ modelsDir: path.join(app.getPath('userData'), 'models'), binDir, logger: console });
+  localWhisper.on('download', (p) => send('localDownload', p));
+  localWhisper.on('status', (s) => { if (s === 'stopped' && state !== 'idle' && !recording) setState('idle'); });
+}
+
+async function ensureLocalReady() {
+  const id = localModelId();
+  if (!localWhisper.isAvailable()) throw new Error('Transcription locale indisponible sur cette machine (moteur absent) : choisissez OpenAI dans les réglages');
+  if (!localWhisper.isModelInstalled(id)) { openSettings(); throw new Error('Modèle local non téléchargé : Réglages → Transcription locale'); }
+  if (!(localWhisper.ready && localWhisper.modelId === id)) {
+    setState('connecting', 'chargement du modèle local');
+    await localWhisper.ensureServer(id, { language: (store.settings.transcription.languages || ['fr'])[0] || 'fr' });
+  }
+}
+
+// --- connexion (OpenAI ou locale selon le mode) ---
+async function ensureConnected() {
+  if (store.currentProvider() === 'local') return ensureLocalReady();
+  if (rt.isOpen) return;
+  const key = await store.getApiKey();
+  if (!key) {
+    openSettings();
+    throw new Error('Aucune clé API OpenAI : saisissez-la dans les réglages');
+  }
+  setState('connecting');
+  await rt.connect(key, { transcription: store.effectiveTranscription() });
+}
+
+rt.on('delta', ({ text }) => send('liveText', { text, final: false }));
+rt.on('error', (err) => notice('error', `OpenAI : ${err.message}`));
+rt.on('status', (s) => { if (s === 'disconnected' && state !== 'idle' && !recording) setState('idle'); });
+
+// LED d'enregistrement : rapport(s) de sortie définis dans settings.led { on: [{reportId,data}], off: [...] }
+function setRecordLed(on) {
+  const led = store.settings.led;
+  if (!led || !barWin) return;
+  for (const cmd of (on ? led.on : led.off) || []) barWin.webContents.send('hid:output', cmd);
+}
+
+// --- enregistrement ---
+async function startRecording() {
+  if (recording) return;
+  try {
+    await ensureConnected();
+  } catch (e) {
+    setState('error', e.message);
+    notice('error', e.message);
+    return;
+  }
+  setRecordLed(true);
+  console.log('dictée : début');
+  recording = true;
+  audioBytes = 0;
+  peakLevel = 0;
+  pcmChunks = [];
+  if (store.currentProvider() !== 'local') rt.clear();
+  send('liveText', { text: '', final: false });
+  if (barWin) barWin.webContents.send('capture', { cmd: 'start', deviceId: store.settings.transcription.microphoneId });
+  setState('listening');
+}
+
+async function stopRecording() {
+  if (!recording) return;
+  recording = false;
+  // laisse arriver les derniers paquets audio avant de clore l'énoncé
+  await new Promise((r) => setTimeout(r, store.settings.transcription.stopDelayMs || 150));
+  if (barWin) barWin.webContents.send('capture', { cmd: 'stop' });
+  const seconds = audioBytes / BYTES_PER_SECOND;
+  setRecordLed(false);
+  console.log(`dictée : fin, ${seconds.toFixed(2)} s d'audio`);
+  const local = store.currentProvider() === 'local';
+  if (seconds < 0.25) {
+    if (!local) rt.clear();
+    pcmChunks = [];
+    setState('idle', 'trop court');
+    return;
+  }
+  if (peakLevel < SILENCE_PEAK) {
+    console.log(`dictée : silence (crête ${peakLevel.toFixed(3)}), rien envoyé`);
+    if (!local) rt.clear();
+    pcmChunks = [];
+    setState('idle', 'silence');
+    return;
+  }
+  setState('transcribing');
+  let transcript;
+  try {
+    if (local) {
+      const pcm = Buffer.concat(pcmChunks);
+      pcmChunks = [];
+      const prompt = [store.settings.transcription.prompt, ...(store.settings.transcription.keywords || [])].filter(Boolean).join(' ');
+      const r = await localWhisper.transcribe(pcm, { prompt });
+      transcript = r.text;
+      console.log(`transcription locale (${localWhisper.modelId}) : ${transcript.length} caractères en ${r.ms} ms`);
+    } else {
+      ({ transcript } = await rt.commit());
+      console.log(`transcription reçue : ${(transcript || '').length} caractères`);
+    }
+  } catch (e) {
+    setState('error', e.message);
+    notice('error', e.message);
+    return;
+  }
+  const model = store.effectiveTranscription().model;
+  const usage = store.addUsage({ audioSeconds: seconds, utterances: 1, usd: local ? 0 : audioCost(model, seconds) });
+  send('usage', usage);
+  if (tray) tray.refresh();
+  await processTranscript(transcript);
+}
+
+async function toggleRecording() {
+  if (recording) await stopRecording(); else await startRecording();
+}
+
+function cancelRecording() {
+  setRecordLed(false);
+  if (recording) {
+    recording = false;
+    if (barWin) barWin.webContents.send('capture', { cmd: 'stop' });
+  }
+  pcmChunks = [];
+  if (store.currentProvider() !== 'local') rt.clear();
+  send('liveText', { text: '', final: false });
+  setState('idle', 'annulé');
+}
+
+async function processTranscript(raw) {
+  let text = (raw || '').trim();
+  if (!text) { setState('idle', 'rien entendu'); return; }
+  if (looksLikePromptEcho(text, store.settings.transcription.prompt) || looksLikeHallucination(text)) {
+    console.log('transcription ignorée : écho du contexte ou hallucination (pas de parole)');
+    setState('idle', 'rien entendu');
+    return;
+  }
+
+  text = correctTranscript(text, { rules: store.settings.transcription.corrections, keywords: store.settings.transcription.keywords, phoneticEnabled: store.settings.transcription.phoneticCorrections !== false });
+
+  if (store.settings.mode === 'courrier') {
+    draft = draft ? `${draft}\n${text}` : text;
+    sendDraft();
+    send('liveText', { text, final: true });
+    setState('idle', 'ajouté au brouillon');
+    return;
+  }
+
+  // mode dictée directe
+  if (store.settings.direct.localPunctuation) text = applyLocalPunctuation(text);
+  lastText = text;
+  send('liveText', { text, final: true });
+  await pasteText(text);
+}
+
+async function pasteText(text) {
+  // Si une de nos fenêtres a le focus (réglages), on ne colle pas : on copie.
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused) {
+    console.log('collage : sauté, une fenêtre de l’app a le focus');
+    clipboard.writeText(text);
+    setPanel(true);
+    setState('idle', 'copié (fenêtre de réglages active)');
+    return;
+  }
+  let toPaste = text;
+  if (store.settings.mode === 'direct' && store.settings.injection.autoSpace && lastInjected && !/[\s\n]$/.test(lastInjected) && !/^[\s\n,.;:!?)»]/.test(text)) {
+    toPaste = ' ' + text;
+  }
+  try {
+    console.log(`collage : ${toPaste.length} caractères`);
+    await pasteIntoActiveApp(toPaste, store.settings.injection);
+    console.log('collage : réussi');
+    lastInjected = toPaste;
+    setState('idle');
+  } catch (e) {
+    console.error('collage : échec', e.message || e);
+    clipboard.writeText(text);
+    setPanel(true);
+    setState('error', 'collage impossible, texte copié');
+    showRightsDialog(e);
+  }
+}
+
+// --- mode courrier : rédaction ---
+let writing = false;
+async function rediger() {
+  if (store.settings.mode !== 'courrier') { notice('warn', 'Passez en mode Courrier pour rédiger'); return; }
+  if (writing) return;
+  if (recording) await stopRecording();
+  if (!draft.trim()) { notice('warn', lastLetter ? 'Dictez d’abord une correction' : 'Rien à rédiger : dictez d’abord'); return; }
+  const key = await store.getApiKey();
+  if (!key) { openSettings(); notice('error', 'Aucune clé API'); return; }
+  writing = true;
+  setState('writing');
+  const cfg = store.settings.courrier;
+  console.log(`rédaction : ${draft.length} caractères de dictée${lastLetter ? ' + courrier précédent' : ''} (${cfg.draftModel})`);
+  try {
+    const r = await writeLetter(key, cfg, { dictation: draft, previousLetter: lastLetter });
+    if (!r.text) throw new Error('réponse vide');
+    const usage = store.addUsage({ letters: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(cfg.draftModel, r.inputTokens, r.outputTokens) });
+    send('usage', usage);
+    if (tray) tray.refresh();
+    lastLetter = r.text;
+    lastText = r.text;
+    draft = '';
+    sendDraft();
+    send('liveText', { text: r.text, final: true });
+    console.log(`rédaction : ${r.text.length} caractères, ${r.inputTokens}/${r.outputTokens} jetons`);
+    await pasteText(r.text);
+  } catch (e) {
+    console.error('rédaction : échec', e.message);
+    setState('error', e.message);
+    notice('error', e.message);
+  } finally {
+    writing = false;
+  }
+}
+
+function showRightsDialog(e) {
+  if (rightsDialogShown) return;
+  rightsDialogShown = true;
+  let message;
+  let url;
+  if (e.missingAutomationRights) {
+    message = 'Autorisez « Dictopen » à piloter « System Events » : Réglages Système → Confidentialité et sécurité → Automatisation.';
+    url = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Automation';
+  } else if (e.missingAccessibilityRights) {
+    message = 'Ajoutez (ou désactivez puis réactivez) « Dictopen » dans Réglages Système → Confidentialité et sécurité → Accessibilité.';
+    url = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility';
+  } else {
+    message = `Le collage a échoué : ${e.message}`;
+  }
+  if (process.platform === 'win32') message = `Le collage a échoué : ${e.message}. Le texte a été copié dans le presse-papiers (Ctrl+V pour le coller).`;
+  dialog.showMessageBox({ type: 'warning', message: 'Collage dans l’application active', detail: message, buttons: url ? ['Ouvrir les réglages', 'Plus tard'] : ['OK'] })
+    .then(({ response }) => { if (url && response === 0) shell.openExternal(url); rightsDialogShown = false; });
+}
+
+// --- autorisations macOS : micro, Accessibilité (frappe de touches), Automatisation (System Events) ---
+const { execFile } = require('child_process');
+function automationStatus() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'darwin') return resolve('granted');
+    // la première exécution déclenche la demande d'autorisation macOS ; -1743 = refusée
+    execFile('osascript', ['-e', 'tell application "System Events" to count processes'], { timeout: 20000 }, (err, _out, stderr) => {
+      if (!err) return resolve('granted');
+      resolve(/-1743/.test(String(stderr) + String(err.message)) ? 'denied' : 'unknown');
+    });
+  });
+}
+
+async function checkPermissions() {
+  if (process.platform !== 'darwin') return { platform: process.platform, microphone: 'granted', accessibility: 'granted', automation: 'granted', allGranted: true };
+  const microphone = systemPreferences.getMediaAccessStatus('microphone');
+  const accessibility = systemPreferences.isTrustedAccessibilityClient(false) ? 'granted' : 'denied';
+  const automation = await automationStatus();
+  const allGranted = microphone === 'granted' && accessibility === 'granted' && automation === 'granted';
+  console.log(`autorisations : micro=${microphone} accessibilité=${accessibility} automatisation=${automation}`);
+  return { platform: 'darwin', microphone, accessibility, automation, allGranted };
+}
+
+// fenêtre « Autorisations » : n'affiche que ce qui manque, se met à jour, se ferme quand tout est accordé
+let permsWin = null;
+function openPermissionsWindow() {
+  if (permsWin && !permsWin.isDestroyed()) { permsWin.show(); permsWin.focus(); return; }
+  permsWin = new BrowserWindow({
+    width: 520, height: 330, resizable: false, minimizable: false, maximizable: false, alwaysOnTop: true,
+    title: 'Autorisations — Dictopen', backgroundColor: '#f4f4f6', autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+  });
+  watchWindow(permsWin, 'autorisations');
+  permsWin.loadFile(path.join(__dirname, '..', 'renderer', 'perms.html'));
+  permsWin.on('closed', () => { permsWin = null; });
+}
+
+function closePermissionsWindow() {
+  if (permsWatch) { clearInterval(permsWatch); permsWatch = null; }
+  if (permsWin && !permsWin.isDestroyed()) permsWin.close();
+}
+
+// l'utilisateur ouvre les Réglages Système : on s'efface, on surveille, et on ne revient que si les droits manquent toujours après 25 s
+let permsWatch = null;
+function hidePermissionsWindowWhileUserActs() {
+  if (!permsWin || permsWin.isDestroyed()) return;
+  permsWin.hide();
+  if (permsWatch) clearInterval(permsWatch);
+  const hiddenAt = Date.now();
+  permsWatch = setInterval(async () => {
+    const st = await checkPermissions();
+    if (st.allGranted) { closePermissionsWindow(); return; }
+    if (Date.now() - hiddenAt > 25000 && permsWin && !permsWin.isDestroyed() && !permsWin.isVisible()) {
+      permsWin.show();
+      clearInterval(permsWatch); permsWatch = null;
+    }
+  }, 3000);
+}
+
+// demande ce qui manque via les boîtes système ; si quelque chose manque encore ensuite, ouvre la fenêtre de suivi
+async function requestPermissions({ quiet = false } = {}) {
+  let st = await checkPermissions();
+  if (st.allGranted) return st;
+  if (st.microphone !== 'granted') await systemPreferences.askForMediaAccess('microphone');
+  // pas de demande système pour l'Accessibilité (sa boîte ferait doublon) : notre fenêtre de suivi guide l'utilisateur
+  st = await checkPermissions();
+  if (!st.allGranted) openPermissionsWindow();
+  return st;
+}
+
+// --- boutons du SpeechMike ---
+async function onMicButton({ type, released }) {
+  const mode = store.current().recordButtonMode || 'pressed';
+  if (type === 'startRecord') {
+    if (mode === 'pressed') { if (released) await stopRecording(); else await startRecording(); }
+    else if (!released) await toggleRecording();
+    return;
+  }
+  if (!released) return; // les autres boutons agissent au relâchement
+  const action = store.settings.speechMikeButtons[type] || 'none';
+  await runAction(action);
+}
+
+async function runAction(action) {
+  if (action === 'none') return;
+  if (action === 'toggleBar') return toggleBar();
+  if (action === 'toggleRecording') return toggleRecording();
+  if (action === 'toggleMode') return toggleMode();
+  if (action === 'rediger') return rediger();
+  if (action === 'newDraft') return newDraft();
+  if (action === 'cancel') return cancelRecording();
+  if (action === 'copyLastText') return copyLastText();
+  if (action === 'openSettings') return openSettings();
+  if (action.startsWith('hotkey:')) {
+    try { await pressHotkey(action.slice(7)); } catch (e) { showRightsDialog(e); }
+  }
+}
+
+// --- IPC ---
+function setupIpc() {
+  ipcMain.handle('settings:get', () => store.settings);
+  ipcMain.handle('settings:defaults', () => store.defaults);
+  ipcMain.handle('settings:save', (_e, partial) => {
+    const before = JSON.stringify({ t: store.effectiveTranscription(), h: store.settings.hotkeys, m: store.settings.mode, p: store.currentProvider() });
+    const s = store.saveSettings(partial);
+    const after = JSON.stringify({ t: store.effectiveTranscription(), h: s.hotkeys, m: s.mode, p: store.currentProvider() });
+    if (before !== after) {
+      registerHotkeys();
+      rt.close(); // la session OpenAI sera rouverte avec la nouvelle configuration
+      }
+    if (barWin) barWin.webContents.send('capture', { cmd: s.transcription.keepMicrophoneOpen ? 'open' : 'close', deviceId: s.transcription.microphoneId });
+    if (partial && partial.launchAtLogin !== undefined) applyLaunchAtLogin();
+    setState(state);
+    if (tray) tray.refresh();
+    return s;
+  });
+  ipcMain.handle('mode:set', (_e, mode) => { setMode(mode); return store.settings.mode; });
+  ipcMain.handle('mode:toggle', () => { toggleMode(); return store.settings.mode; });
+  ipcMain.handle('apikey:masked', () => store.maskedApiKey());
+  ipcMain.handle('clipboard:readText', () => clipboard.readText());
+  ipcMain.handle('apikey:set', async (_e, key) => { await store.setApiKey(key); rt.close(); return store.maskedApiKey(); });
+  ipcMain.handle('apikey:test', async () => {
+    const key = await store.getApiKey();
+    if (!key) return { ok: false, message: 'aucune clé enregistrée' };
+    try {
+      const res = await fetch('https://api.openai.com/v1/models/gpt-live-transcribe', { headers: { Authorization: `Bearer ${key}` } });
+      if (res.ok) return { ok: true, message: 'clé valide, modèle de transcription accessible' };
+      const j = await res.json().catch(() => ({}));
+      return { ok: false, message: `HTTP ${res.status} ${j.error?.message || ''}` };
+    } catch (e) {
+      return { ok: false, message: e.message };
+    }
+  });
+  ipcMain.handle('usage:get', () => store.usage);
+  ipcMain.handle('usage:reset', () => { const u = store.resetUsage(); send('usage', u); if (tray) tray.refresh(); return u; });
+
+  ipcMain.handle('rec:start', startRecording);
+  ipcMain.handle('rec:stop', stopRecording);
+  ipcMain.handle('rec:toggle', toggleRecording);
+  ipcMain.handle('rec:cancel', cancelRecording);
+  ipcMain.handle('draft:rediger', rediger);
+  ipcMain.handle('draft:new', newDraft);
+  ipcMain.handle('draft:get', () => ({ text: draft, letter: lastLetter }));
+  ipcMain.handle('text:copyLast', copyLastText);
+
+  ipcMain.on('audio:chunk', (_e, buf) => {
+    if (!recording) return;
+    if (store.currentProvider() === 'local') {
+      pcmChunks.push(Buffer.from(buf));
+      audioBytes += buf.byteLength;
+      return;
+    }
+    if (!rt.isOpen) return;
+    try {
+      rt.appendAudio(buf);
+      audioBytes += buf.byteLength;
+    } catch (e) {
+      notice('error', e.message);
+    }
+  });
+  // moteur local : modèles
+  ipcMain.handle('local:status', () => ({ available: localWhisper.isAvailable(), models: localWhisper.modelsStatus(), selected: localModelId(), recommended: recommendedModelId(), running: localWhisper.ready ? localWhisper.modelId : null }));
+  ipcMain.handle('local:download', async (_e, id) => { await localWhisper.downloadModel(id); return localWhisper.modelsStatus(); });
+  ipcMain.handle('local:cancel', (_e, id) => { localWhisper.cancelDownload(id); });
+  ipcMain.handle('local:delete', (_e, id) => { localWhisper.deleteModel(id); return localWhisper.modelsStatus(); });
+  ipcMain.handle('local:select', (_e, id) => { store.saveSettings({ local: { modelId: id } }); localWhisper.stop(); return localModelId(); });
+  ipcMain.on('audio:level', (_e, level) => { if (recording && level > peakLevel) peakLevel = level; if (barWin) barWin.webContents.send('level', level); });
+  ipcMain.on('audio:device', (_e, label) => { if (label !== audioDevice) { audioDevice = label; setState(state); } });
+  ipcMain.on('audio:error', (_e, msg) => { notice('error', `Micro : ${msg}`); if (recording) cancelRecording(); });
+
+  ipcMain.on('mic:button', (_e, ev) => onMicButton(ev).catch((err) => notice('error', err.message)));
+  ipcMain.on('mic:status', (_e, st) => { micStatus = st; setState(state); });
+  ipcMain.on('log:info', (_e, msg) => console.log(String(msg).slice(0, 4000)));
+  ipcMain.handle('hid:output', (_e, payload) => { if (barWin) barWin.webContents.send('hid:output', payload); });
+  ipcMain.handle('mic:pairRequest', () => { if (barWin) barWin.webContents.send('mic:pair'); });
+
+  ipcMain.handle('panel:set', (_e, show) => { setPanel(show); return panelShown; });
+  ipcMain.handle('perms:check', () => checkPermissions());
+  ipcMain.handle('perms:request', () => requestPermissions());
+  ipcMain.handle('perms:close', () => closePermissionsWindow());
+  ipcMain.handle('perms:openPane', (_e, pane) => {
+    if (!/^Privacy_[A-Za-z]+$/.test(pane)) return;
+    shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${pane}`);
+    hidePermissionsWindowWhileUserActs();
+  });
+  ipcMain.handle('win:settings', openSettings);
+  ipcMain.handle('win:hideBar', () => { if (barWin) barWin.hide(); if (tray) tray.refresh(); });
+  ipcMain.handle('app:quit', () => app.quit());
+}
+
+// --- WebHID : autoriser le SpeechMike sans boîte de dialogue ---
+function setupHidPermissions() {
+  const { session } = require('electron');
+  const ses = session.defaultSession;
+  ses.setPermissionCheckHandler((_wc, permission) => ['hid', 'media', 'audioCapture'].includes(permission));
+  ses.setPermissionRequestHandler((_wc, permission, cb) => cb(['hid', 'media', 'audioCapture'].includes(permission)));
+  ses.setDevicePermissionHandler((details) => details.deviceType === 'hid');
+  ses.on('select-hid-device', (event, details, callback) => {
+    event.preventDefault();
+    const dev = details.deviceList.find((d) => /speechmike|powermic|rm-40|microphone streaming/i.test(d.productName || '')) || details.deviceList[0];
+    callback(dev ? dev.deviceId : '');
+  });
+}
+
+// journal dans ~/Library/Logs/Dictopen/ (jamais le texte dicté)
+function setupLogging() {
+  const fs = require('fs');
+  const dir = process.platform === 'darwin' ? path.join(app.getPath('home'), 'Library', 'Logs', 'Dictopen') : app.getPath('logs');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `dictee_${new Date().toISOString().slice(0, 10)}.log`);
+  const out = fs.createWriteStream(file, { flags: 'a' });
+  for (const level of ['log', 'warn', 'error']) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => {
+      orig(...args);
+      out.write(`${new Date().toISOString()} ${level.toUpperCase()} ${args.map((a) => (a instanceof Error ? a.stack : typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`);
+    };
+  }
+  process.on('uncaughtException', (e) => console.error('uncaughtException', e));
+  process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
+  console.log(`démarrage ${app.getName()} ${app.getVersion()} (${app.isPackaged ? 'empaqueté' : 'développement'})`);
+}
+
+app.whenReady().then(() => {
+  setupLogging();
+  store = new Store();
+  setupLocalWhisper();
+  setupHidPermissions();
+  setupIpc();
+  try { if (app.dock) app.dock.show(); } catch (e) { console.warn('dock', e.message); }
+  createAppMenu();
+  createBar();
+  createTray();
+  registerHotkeys();
+  applyLaunchAtLogin();
+  if (!store.hasApiKey()) openSettings();
+  // vérification des autorisations macOS au démarrage ; demande seulement si quelque chose manque
+  // séquence de premier démarrage : droits macOS, puis accès au trousseau (clé API) pour que rien ne surgisse à la première dictée
+  setTimeout(async () => {
+    // le moteur local se charge en parallèle des demandes d'autorisation (elles peuvent attendre l'utilisateur)
+    if (store.currentProvider() === 'local') ensureLocalReady().then(() => setState('idle')).catch((e) => console.warn('moteur local', e.message));
+    if (process.env.DICTOPEN_TEST_WAV) { setTimeout(() => runSelfTest(process.env.DICTOPEN_TEST_WAV), 12000); }
+    try { await requestPermissions({ quiet: true }); } catch (e) { console.warn('autorisations', e.message); }
+    try {
+      const key = await store.getApiKey();
+      console.log(key ? 'clé API lue (trousseau accessible)' : 'aucune clé API enregistrée');
+      if (store.currentProvider() !== 'local' && key) ensureConnected().catch((e) => console.warn('préconnexion OpenAI', e.message));
+    } catch (e) { console.warn('trousseau', e.message); }
+  }, 1500);
+});
+
+// Auto-test (développement) : DICTOPEN_TEST_WAV=<fichier WAV 24 kHz mono 16 bits> rejoue le fichier comme une dictée complète
+// (même chemin que le micro : tampon, transcription, filtres, collage ou copie).
+async function runSelfTest(wavPath) {
+  const fs = require('fs');
+  try {
+    const wav = fs.readFileSync(wavPath);
+    const rate = wav.readUInt32LE(24);
+    if (rate !== 24000) throw new Error(`fréquence ${rate} Hz, 24000 attendue`);
+    const pcm = wav.subarray(44);
+    console.log(`auto-test : ${wavPath} (${(pcm.length / BYTES_PER_SECOND).toFixed(1)} s)`);
+    await startRecording();
+    if (!recording) throw new Error('enregistrement non démarré');
+    for (let off = 0; off < pcm.length; off += 4800) {
+      const chunk = pcm.subarray(off, Math.min(off + 4800, pcm.length));
+      if (store.currentProvider() === 'local') { pcmChunks.push(Buffer.from(chunk)); audioBytes += chunk.length; }
+      else { rt.appendAudio(chunk); audioBytes += chunk.length; }
+      peakLevel = 1;
+    }
+    await stopRecording();
+    console.log(`auto-test : terminé, état ${state}, dernier texte : ${JSON.stringify((lastText || draft || '').slice(0, 160))}`);
+  } catch (e) {
+    console.error('auto-test : échec', e.message);
+  }
+}
+
+app.on('window-all-closed', (e) => e.preventDefault());
+app.on('will-quit', () => { globalShortcut.unregisterAll(); rt.close(); if (localWhisper) localWhisper.stop(); });
+app.on('activate', () => { if (!barWin) createBar(); else barWin.showInactive(); });

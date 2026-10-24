@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>NSMicrophoneUsageDescription</key><string>Dictopen capte votre voix pour la transcrire.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Dictopen colle le texte dicté dans l'application active (System Events).</string>
+  <key>CFBundleDisplayName</key><string>Dictopen</string>
+  <key>CFBundleName</key><string>Dictopen</string>
+</dict></plist>

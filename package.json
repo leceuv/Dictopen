@@ -1,0 +1,28 @@
+{
+  "name": "dictopen",
+  "productName": "Dictopen",
+  "version": "0.4.0",
+  "description": "Dictopen — dictée médicale : transcription vocale par l'API OpenAI, collage dans l'application active, SpeechMike, mode Courrier",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-packager . Dictopen --platform=darwin --arch=arm64 --out=out --overwrite --app-bundle-id=com.dictopen.app --app-category-type=public.app-category.productivity --extend-info=extend-info.plist --icon=icon.icns --ignore='^/out' --ignore='^/dist' --ignore='^/\\.git' --ignore='^/docs' --ignore='^/icon-256.png' --ignore='^/README.md' --ignore='^/LICENSE' --extra-resource=bin/darwin-arm64 --ignore='^/bin'",
+    "install-mac": "npm run package && rm -rf '/Applications/Dictopen.app' && cp -R 'out/Dictopen-darwin-arm64/Dictopen.app' /Applications/ && cp icon.icns '/Applications/Dictopen.app/Contents/Resources/electron.icns' && (security find-identity -v -p codesigning | grep -q 'Dictee OpenAI Dev' && codesign --force --deep -s 'Dictee OpenAI Dev' '/Applications/Dictopen.app' || codesign --force --deep -s - '/Applications/Dictopen.app') && codesign --verify --deep --strict '/Applications/Dictopen.app'",
+    "package-win": "electron-packager . Dictopen --platform=win32 --arch=x64 --out=dist --overwrite --app-bundle-id=com.dictopen.app --icon=icon.ico --win32metadata.CompanyName=Dictopen --win32metadata.ProductName=Dictopen --win32metadata.FileDescription=Dictopen --ignore=\"^/out\" --ignore=\"^/dist\" --ignore=\"^/\\.git\" --ignore=\"^/docs\" --ignore=\"^/icon-256.png\" --ignore=\"^/icon.icns\" --ignore=\"^/README.md\" --ignore=\"^/LICENSE\" --extra-resource=bin/win32-x64 --ignore=\"^/bin\"",
+    "icon-win": "png-to-ico icon-256.png > icon.ico"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.3.0",
+    "electron": "^45.0.0",
+    "png-to-ico": "^2.1.8"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OWNER/dictopen"
+  }
+}

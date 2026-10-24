@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Réglages — Dictopen</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f4f4f6; --card:#fff; --fg:#1c1c22; --muted:#6b6b76; --line:#e2e2e8; --accent:#2f6fed; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1e1f24; --card:#27282f; --fg:#e8e8ee; --muted:#9a9ba6; --line:#383a44; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font: 13px/1.45 -apple-system, "SF Pro Text", Helvetica, sans-serif; }
+  .page { max-width:740px; margin:0 auto; padding:18px 20px 40px; }
+  h1 { font-size:18px; margin:0 0 14px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  h2 { font-size:14px; margin:0 0 10px; }
+  .row { display:flex; align-items:center; gap:10px; margin:8px 0; flex-wrap:wrap; }
+  .row label { min-width:220px; color:var(--muted); }
+  input[type=text], input[type=password], select, textarea { font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; flex:1; min-width:160px; }
+  textarea { width:100%; min-height:70px; resize:vertical; }
+  textarea.big { min-height:260px; font-size:12px; }
+  button { font:inherit; border:0; border-radius:7px; padding:6px 12px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:var(--line); color:var(--fg); }
+  .hint { color:var(--muted); font-size:12px; margin:4px 0 0; }
+  .ok { color:#2a9d6a; } .ko { color:#d14343; }
+  table { border-collapse:collapse; width:100%; }
+  td { padding:4px 6px; border-bottom:1px solid var(--line); }
+  td:first-child { color:var(--muted); width:40%; }
+  .usage b { font-size:20px; }
+  .saved { position:fixed; right:16px; bottom:12px; background:#2a9d6a; color:#fff; padding:6px 10px; border-radius:7px; opacity:0; transition:opacity .2s; }
+  .saved.show { opacity:1; }
+  .modes { display:flex; gap:8px; }
+  .model { display:flex; align-items:center; gap:12px; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:8px 0; }
+  .model.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .model .txt { flex:1; min-width:0; }
+  .model b { display:block; }
+  .model .tag { font-size:11px; color:#fff; background:var(--accent); border-radius:8px; padding:1px 7px; margin-left:6px; vertical-align:middle; }
+  .model progress { width:140px; height:8px; }
+  input.keycap { cursor:pointer; font-weight:600; text-align:center; max-width:220px; }
+  input.keycap:focus { outline:2px solid var(--accent); }
+  .modes label { display:flex; align-items:center; gap:6px; padding:6px 12px; border:1px solid var(--line); border-radius:8px; cursor:pointer; min-width:0; color:var(--fg); }
+  .modes input:checked + span { font-weight:600; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Réglages — Dictopen</h1>
+
+  <section>
+    <h2>Mode de fonctionnement</h2>
+    <div class="modes">
+      <label><input type="radio" name="mode" value="direct"><span>Dictée directe</span></label>
+      <label><input type="radio" name="mode" value="courrier"><span>Courrier</span></label>
+    </div>
+    <p class="hint"><b>Dictée directe</b> : chaque phrase dictée est collée telle quelle dans l'application active. <b>Courrier</b> : la dictée s'accumule, puis « Rédiger » (bouton, EOL du SpeechMike ou Ctrl+Alt+T) produit le courrier complet avec le prompt maître et le colle. Changement rapide : Ctrl+Alt+M, F4 du micro ou l'étiquette de la barre.</p>
+  </section>
+
+  <section id="permsSection" hidden>
+    <h2>Autorisations macOS</h2>
+    <div class="row"><span id="permsStatus" class="hint">vérification…</span><span style="flex:1"></span><button id="permsRequest">Vérifier et demander</button></div>
+    <p class="hint">Micro (dictée), Accessibilité (frappe de Cmd+V) et Automatisation vers System Events sont nécessaires au collage. Après une mise à jour de l'application, Accessibilité peut devoir être décochée puis recochée.</p>
+  </section>
+
+  <section>
+    <h2>Clé API OpenAI</h2>
+    <div class="row"><label>Clé enregistrée</label><span id="keyMasked" class="hint">aucune</span></div>
+    <div class="row"><label>Nouvelle clé</label><input type="password" id="keyInput" placeholder="sk-…" autocomplete="off"><button class="secondary" id="keyPaste" title="Coller la clé depuis le presse-papiers">Coller</button><button id="keySave">Enregistrer</button><button class="secondary" id="keyTest">Tester</button></div>
+    <p class="hint" id="keyResult">La clé est chiffrée dans le trousseau macOS (jamais dans le Drive).</p>
+  </section>
+
+  <section class="usage">
+    <h2>Consommation</h2>
+    <div class="row"><b id="usageUsd">0,00 $</b><span class="hint" id="usageDetail"></span><span style="flex:1"></span><button class="secondary" id="usageReset">Remettre à zéro</button></div>
+    <table>
+      <tr><td>Audio transcrit</td><td id="usageAudio"></td></tr>
+      <tr><td>Énoncés</td><td id="usageUtt"></td></tr>
+      <tr><td>Courriers rédigés</td><td id="usageLetters"></td></tr>
+      <tr><td>Rédaction : jetons entrée / sortie</td><td id="usageTokens"></td></tr>
+    </table>
+    <p class="hint">Estimation avec les tarifs publics du 24/10/2026. La facture réelle fait foi.</p>
+  </section>
+
+  <section>
+    <h2>Mode Dictée directe</h2>
+    <div class="row"><label>Transcription</label>
+      <select id="d_provider"><option value="openai">OpenAI (nuage, texte en direct)</option><option value="local">Locale (sur cet ordinateur, gratuite, hors ligne)</option></select></div>
+    <div class="row"><label>Modèle OpenAI</label>
+      <select id="d_model">
+        <option value="gpt-live-transcribe">gpt-live-transcribe (texte en direct, 0,017 $/min)</option>
+        <option value="gpt-transcribe">gpt-transcribe (après relâchement, 0,0045 $/min)</option>
+        <option value="gpt-4o-transcribe">gpt-4o-transcribe (~0,006 $/min)</option>
+        <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (~0,003 $/min)</option>
+      </select></div>
+    <div class="row"><label>Réactivité (gpt-live-transcribe)</label>
+      <select id="d_delay"><option value="minimal">minimale</option><option value="low">basse</option><option value="medium">moyenne</option><option value="high">haute (plus précis)</option><option value="xhigh">très haute</option></select></div>
+    <div class="row"><label>Bouton Record du SpeechMike</label>
+      <select id="d_record"><option value="pressed">appuyer-parler (maintenu)</option><option value="toggle">marche / arrêt</option></select></div>
+    <div class="row"><label>Ponctuation dictée locale</label><input type="checkbox" id="d_punct"><span class="hint">« virgule », « point à la ligne », « nouveau paragraphe »… convertis en signes</span></div>
+  </section>
+
+  <section>
+    <h2>Mode Courrier</h2>
+    <div class="row"><label>Transcription</label>
+      <select id="c_provider"><option value="openai">OpenAI (nuage)</option><option value="local">Locale (sur cet ordinateur)</option></select></div>
+    <div class="row"><label>Modèle OpenAI</label>
+      <select id="c_model">
+        <option value="gpt-transcribe">gpt-transcribe (0,0045 $/min, recommandé)</option>
+        <option value="gpt-live-transcribe">gpt-live-transcribe (texte en direct, 0,017 $/min)</option>
+        <option value="gpt-4o-transcribe">gpt-4o-transcribe (~0,006 $/min)</option>
+        <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (~0,003 $/min)</option>
+      </select></div>
+    <div class="row"><label>Réactivité (gpt-live-transcribe)</label>
+      <select id="c_delay"><option value="minimal">minimale</option><option value="low">basse</option><option value="medium">moyenne</option><option value="high">haute</option><option value="xhigh">très haute</option></select></div>
+    <div class="row"><label>Bouton Record du SpeechMike</label>
+      <select id="c_record"><option value="toggle">marche / arrêt</option><option value="pressed">appuyer-parler (maintenu)</option></select></div>
+    <div class="row"><label>Modèle de rédaction</label>
+      <select id="c_draft">
+        <option value="gpt-5">gpt-5 (qualité, 1,25 / 10 $ par M jetons ≈ 0,02 $ par courrier)</option>
+        <option value="gpt-5-mini">gpt-5-mini (0,25 / 2 $ ≈ 0,004 $ par courrier)</option>
+        <option value="gpt-5-nano">gpt-5-nano (très économique)</option>
+        <option value="gpt-4.1">gpt-4.1 (2 / 8 $)</option>
+        <option value="gpt-4.1-mini">gpt-4.1-mini (0,40 / 1,60 $)</option>
+      </select></div>
+    <div class="row"><label>Effort de raisonnement (gpt-5)</label>
+      <select id="c_effort"><option value="minimal">minimal (plus rapide)</option><option value="low">bas</option><option value="medium">moyen</option><option value="high">élevé (lent)</option></select></div>
+    <div class="row"><label>Prompt maître</label><button class="secondary" id="c_promptDefault">Remettre le prompt par défaut</button></div>
+    <textarea id="c_prompt" class="big" placeholder="Vide = prompt générique (courrier médical). Collez ici votre propre prompt : spécialité, nom pour la signature, formules habituelles, vocabulaire, corrections de dictée fréquentes…"></textarea>
+    <p class="hint">La date du jour est ajoutée automatiquement. Après un courrier, une nouvelle dictée + « Rédiger » = correction du courrier précédent (repris en entier). « Nouveau » repart de zéro.</p>
+  </section>
+
+  <section id="localSection">
+    <h2>Transcription locale</h2>
+    <p class="hint" id="localIntro">Moteur whisper.cpp intégré : l'audio ne quitte pas l'ordinateur, aucun coût. Le texte arrive après le relâchement (pas d'affichage en direct). Choisissez un modèle selon votre machine, puis sélectionnez « Locale » dans le mode voulu.</p>
+    <div id="localModels"></div>
+    <p class="hint" id="localRunning"></p>
+  </section>
+
+  <section>
+    <h2>Transcription (commun aux deux modes)</h2>
+    <div class="row"><label>Langues (codes, séparés par des virgules)</label><input type="text" id="t_languages" placeholder="fr"></div>
+    <div class="row"><label>Contexte donné au modèle de transcription</label></div>
+    <textarea id="t_prompt"></textarea>
+    <p class="hint">Un indice de vocabulaire et de style, pas des consignes : une ou deux phrases qui ressemblent à ce que vous dictez.</p>
+    <div class="row"><label>Mots-clés (termes, noms propres ; un par ligne)</label></div>
+    <textarea id="t_keywords" placeholder="WALANT&#10;De Quervain&#10;doigt à ressaut"></textarea>
+    <div class="row"><label>Corrections (une par ligne : entendu =&gt; voulu)</label></div>
+    <textarea id="t_corrections" placeholder="cardégique => Kardégic&#10;doigt à rosso => doigt à ressaut"></textarea>
+    <p class="hint">Remplacement systématique après transcription, mots entiers, sans tenir compte de la casse ni des accents.</p>
+    <div class="row"><label>Correction phonétique sur les mots-clés</label><input type="checkbox" id="t_phonetic"><span class="hint">tout mot prononcé comme un mot-clé est remplacé par ce mot-clé (« cardégique » → Kardégic, « acromio plastie » → acromioplastie)</span></div>
+    <div class="row"><label>Réduction de bruit</label>
+      <select id="t_noise"><option value="near_field">micro proche (SpeechMike)</option><option value="far_field">micro lointain</option><option value="none">aucune</option></select></div>
+    <div class="row"><label>Micro</label><select id="t_mic"><option value="">automatique (SpeechMike si présent)</option></select></div>
+    <div class="row"><label>Garder le micro ouvert entre les dictées</label><input type="checkbox" id="t_keepOpen"><span class="hint">plus réactif, mais la LED du micro ne suit plus</span></div>
+  </section>
+
+  <section>
+    <h2>SpeechMike</h2>
+    <div class="row"><label>Association</label><button class="secondary" id="micPair">Associer un micro…</button><span class="hint">le comportement du bouton Record se règle dans chaque mode</span></div>
+    <table id="buttons"></table>
+    <p class="hint">Pour « raccourci clavier », indiquez-le dans le champ (ex. <code>Ctrl+Alt+Escape</code>, <code>Cmd+S</code>).</p>
+  </section>
+
+  <section>
+    <h2>Raccourcis globaux</h2>
+    <div class="row"><label>Dicter (marche/arrêt)</label><input type="text" id="h_toggleRecording" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="toggleRecording">Effacer</button></div>
+    <div class="row"><label>Afficher / masquer la barre</label><input type="text" id="h_toggleBar" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="toggleBar">Effacer</button></div>
+    <div class="row"><label>Changer de mode</label><input type="text" id="h_toggleMode" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="toggleMode">Effacer</button></div>
+    <div class="row"><label>Rédiger le courrier</label><input type="text" id="h_rediger" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="rediger">Effacer</button></div>
+    <div class="row"><label>Nouveau courrier</label><input type="text" id="h_newDraft" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="newDraft">Effacer</button></div>
+    <div class="row"><label>Copier le dernier texte</label><input type="text" id="h_copyLastText" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="copyLastText">Effacer</button></div>
+    <p class="hint">Cliquez dans le champ puis appuyez sur la combinaison voulue (avec ⌃ ⌥ ⇧ ⌘ si besoin). La touche est enregistrée par sa position physique, telle qu'elle apparaît sur votre clavier. « Effacer » désactive le raccourci.</p>
+  </section>
+
+  <section>
+    <h2>Collage</h2>
+    <div class="row"><label>Délai avant restauration du presse-papiers (ms)</label><input type="text" id="i_delay"></div>
+    <div class="row"><label>Espace automatique entre deux énoncés (dictée directe)</label><input type="checkbox" id="i_autoSpace"></div>
+    <p class="hint">Autorisations macOS nécessaires : Micro, Accessibilité et Automatisation (System Events).</p>
+  </section>
+
+  <section>
+    <h2>Démarrage</h2>
+    <div class="row"><label>Lancer Dictopen à l'ouverture de session</label><input type="checkbox" id="launchAtLogin"></div>
+  </section>
+
+  <div class="row"><button class="secondary" id="quit">Quitter l'application</button></div>
+</div>
+<div class="saved" id="saved">Enregistré</div>
+<script src="settings.js"></script>
+</body>
+</html>

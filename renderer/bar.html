@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Dictopen</title>
+<style>
+  :root { color-scheme: dark; --bg:#1e1f24; --fg:#e8e8ee; --muted:#9a9ba6; --accent:#ff4d4d; --ok:#4cc38a; --warn:#f5b74a; --chip:#2b2d35; --blue:#3b6fe0; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font: 13px/1.35 -apple-system, "SF Pro Text", Helvetica, sans-serif; overflow:hidden; user-select:none; }
+  .wrap { display:flex; flex-direction:column; height:100%; padding:8px 10px; gap:6px; -webkit-app-region: drag; }
+  .top { display:flex; align-items:center; gap:8px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); flex:none; transition: background .15s; }
+  .dot.listening { background:var(--accent); box-shadow:0 0 0 3px rgba(255,77,77,.25); }
+  .dot.transcribing, .dot.writing, .dot.connecting { background:var(--warn); }
+  .dot.error { background:#ff7b7b; }
+  .status { flex:1; min-width:40px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .vu { width:60px; flex:none; height:6px; background:#2b2d35; border-radius:3px; overflow:hidden; flex:none; }
+  .vu > i { display:block; height:100%; width:0; background:var(--ok); transition: width .05s linear; }
+  .mode { -webkit-app-region: no-drag; font-size:11px; padding:2px 8px; border-radius:10px; background:var(--chip); cursor:pointer; white-space:nowrap; flex:none; }
+  .mode.courrier { background:var(--blue); color:#fff; }
+  .panel { position:relative; flex:1; display:flex; min-height:0; }
+  body.compact .panel { display:none; }
+  .panel .close { position:absolute; top:4px; right:4px; padding:0 6px; font-size:11px; line-height:18px; background:#2b2d35; opacity:.8; -webkit-app-region: no-drag; }
+  .text { flex:1; background:#15161a; border-radius:8px; padding:6px 8px; overflow:auto; user-select:text; -webkit-app-region: no-drag; white-space:pre-wrap; word-break:break-word; color:#d8d8e0; min-height:52px; font-size:12px; }
+  .text.live { color:#bdbdc8; font-style:italic; }
+  .text:empty::before { content: attr(data-placeholder); color:#5f6070; font-style:normal; }
+  .bottom { display:flex; align-items:center; gap:6px; -webkit-app-region: no-drag; }
+  button { font:inherit; color:var(--fg); background:var(--chip); border:0; border-radius:7px; padding:4px 9px; cursor:pointer; }
+  button:hover { background:#363944; }
+  button.rec { background:var(--accent); color:#fff; font-weight:600; min-width:34px; }
+  button.rec.on { background:#b32d2d; }
+  button.primary { background:var(--blue); color:#fff; font-weight:600; }
+  button:disabled { opacity:.4; cursor:default; }
+  .spacer { flex:1; }
+  .cost { color:var(--muted); font-variant-numeric: tabular-nums; }
+  .status.error { color:#ff9c9c; }
+  button, .mode { transition: transform .08s ease, filter .08s ease; }
+  button:active, .mode:active, button.flash, .mode.flash { transform: scale(.9); filter: brightness(1.35); }
+  @media (prefers-reduced-motion: reduce) { button, .mode { transition: none; } }
+  .mic { color:var(--muted); font-size:11px; max-width:190px; flex:0 1 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mic.on { color:var(--ok); }
+  .mic kbd { display:inline-block; font: 600 11px/1 -apple-system, Helvetica, sans-serif; color:#fff; background:#3a3c47; border:1px solid #555868; border-bottom-width:2px; border-radius:4px; padding:2px 6px; margin-left:2px; vertical-align:middle; }
+  .courrierOnly { display:none; }
+  body.courrier .courrierOnly { display:inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="dot" id="dot"></span>
+    <span class="status" id="status">Prêt</span>
+    <span class="mic" id="mic" title="SpeechMike">◌ micro</span>
+    <span class="mode" id="mode" title="Changer de mode (Ctrl+Alt+M)">Dictée directe</span>
+    <span class="vu"><i id="vu"></i></span>
+  </div>
+  <div class="panel" id="panel">
+    <div class="text" id="text" data-placeholder="Maintenez Record et dictez."></div>
+    <button class="close" id="btnPanelClose" title="Masquer le texte">✕</button>
+  </div>
+  <div class="bottom">
+    <button class="rec" id="btnRec" title="Dicter (marche/arrêt)">●</button>
+    <button id="btnCancel" title="Annuler l'énoncé en cours">✕</button>
+    <button class="primary courrierOnly" id="btnRediger" title="Rédiger le courrier à partir de la dictée (Ctrl+Alt+T)">Rédiger</button>
+    <button class="courrierOnly" id="btnNew" title="Nouveau courrier : vide la dictée et le courrier précédent (Ctrl+Alt+N)">Nouveau</button>
+    <button id="btnCopy" title="Copier le dernier texte">Copier</button>
+    <button id="btnPanel" title="Afficher / masquer le texte">▤</button>
+    <span class="spacer"></span>
+    <span class="cost" id="cost" title="Consommation estimée depuis la remise à zéro">0,00 $</span>
+    <button id="btnSettings" title="Réglages">⚙</button>
+    <button id="btnHide" title="Masquer la barre (Ctrl+Alt+H)">—</button>
+  </div>
+</div>
+<script src="bar.js"></script>
+<script src="capture.js"></script>
+<script src="speechmike.js"></script>
+</body>
+</html>
