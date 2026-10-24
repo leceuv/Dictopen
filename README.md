@@ -37,7 +37,7 @@ Le contexte et les mots-clés sont transmis au moteur local comme à OpenAI. Le 
 
 ## Installation (utilisateurs)
 
-Téléchargez l'archive de votre plateforme dans les *Releases*, puis suivez `docs/GUIDE.md` (première ouverture, autorisations, clé API).
+Téléchargez l'archive de votre plateforme dans les [Releases](https://github.com/leceuv/Dictopen/releases/latest), puis suivez `docs/GUIDE.md` (première ouverture, autorisations, clé API).
 
 ## Développement
 
