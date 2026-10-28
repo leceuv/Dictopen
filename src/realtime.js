@@ -70,7 +70,9 @@ class RealtimeTranscriber extends EventEmitter {
     const transcription = { model: t.model };
     if (t.prompt) transcription.prompt = t.prompt;
     if (t.keywords && t.keywords.length) transcription.keywords = t.keywords;
-    if (t.languages && t.languages.length) transcription.languages = t.languages;
+    // « languages » n'est accepté que par les modèles gpt-transcribe / gpt-live-transcribe
+    if (t.languages && t.languages.length && /^gpt-(live-)?transcribe$/.test(t.model)) transcription.languages = t.languages;
+    else if (t.languages && t.languages.length) transcription.language = t.languages[0];
     if (t.delay && t.model === 'gpt-live-transcribe') transcription.delay = t.delay;
     return {
       type: 'transcription',

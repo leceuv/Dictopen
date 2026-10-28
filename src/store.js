@@ -70,6 +70,8 @@ const DEFAULTS = {
   },
   bar: { x: null, y: null },
   launchAtLogin: true,
+  // diagnostic : enregistre chaque énoncé (audio WAV + JSON) dans le dossier de données, sur cet ordinateur seulement
+  recordDictations: false,
   // LED d'enregistrement du SpeechMike II (protocole observé dans le pilote Philips SpeechControl, voir docs/speechmike-led.md) :
   // rapport de sortie 9 octets, octet 0 = 0x02, 2 bits par (LED, couleur) dans les octets 6-8 : 1/2 = clignotant, 3 = fixe.
   // Grande LED : rouge = octet 6 bits 2-3, vert = bits 0-1.

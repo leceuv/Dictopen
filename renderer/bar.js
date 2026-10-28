@@ -36,8 +36,10 @@
     const keyLabel = hotkey ? hotkey.replace('Ctrl', '⌃').replace('Alt', '⌥').replace('Shift', '⇧').replace('Cmd', '⌘').replace(/\+/g, '') : '';
     const devLabel = (audioDevice || 'micro ?').replace(/^default\s*-\s*/i, '').replace(/\s*\((built-in|intégré)\)\s*/i, '');
     if (mic && mic.connected) {
-      $('mic').textContent = '● ' + (mic.name || 'micro');
-      $('mic').title = 'SpeechMike connecté';
+      // boutons = HID du SpeechMike ; si l'audio vient d'un autre micro, on le signale
+      const audioIsSpeechMike = /speechmike|powermic|rm-40|microphone streaming/i.test(audioDevice || '');
+      $('mic').innerHTML = '● ' + (mic.name || 'micro').replace(/</g, '&lt;') + (audioIsSpeechMike || !audioDevice ? '' : ` — <span style="color:#f5b74a">son : ${devLabel.replace(/</g, '&lt;')}</span>`);
+      $('mic').title = audioIsSpeechMike ? 'SpeechMike connecté (boutons et son)' : `Boutons : SpeechMike ; son capté par « ${audioDevice} » — changez le micro dans les réglages`;
     } else {
       $('mic').innerHTML = '🎤 ' + devLabel.replace(/</g, '&lt;') + (keyLabel ? ` — dicter : <kbd>${keyLabel.replace(/</g, '&lt;')}</kbd>` : '');
       $('mic').title = `Pas de SpeechMike : micro « ${audioDevice || '?'} » ; dicter avec la touche ${hotkey || '(aucune)'} (marche/arrêt)`;

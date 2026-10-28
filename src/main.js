@@ -9,6 +9,7 @@ const { pasteIntoActiveApp, pressHotkey } = require('./inject');
 const { audioCost, textCost } = require('./pricing');
 const { LocalWhisper, recommendedModelId } = require('./local-whisper');
 const { correctTranscript } = require('./corrections');
+const { wavFromPcm16 } = require('./local-whisper');
 
 app.setName('Dictopen');
 
@@ -43,6 +44,84 @@ let rightsDialogShown = false;
 
 const BYTES_PER_SECOND = 24000 * 2;
 const SILENCE_PEAK = 0.04; // en dessous : pas de parole (bruit de fond)
+
+// Diagnostic : conserve l'énoncé (WAV 24 kHz + JSON) dans <données>/dictations/AAAA-MM-JJ/ — jamais synchronisé
+let lastSample = null;
+function saveDictationSample({ pcm, seconds, provider, model, transcript }) {
+  try {
+    const fs = require('fs');
+    const now = new Date();
+    const day = now.toISOString().slice(0, 10);
+    const dir = path.join(app.getPath('userData'), 'dictations', day);
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = now.toTimeString().slice(0, 8).replace(/:/g, '') + '-' + String(now.getMilliseconds()).padStart(3, '0');
+    const base = path.join(dir, stamp);
+    if (pcm && pcm.length) fs.writeFileSync(base + '.wav', wavFromPcm16(pcm, 24000));
+    lastSample = { base, meta: { time: now.toISOString(), seconds: Number(seconds.toFixed(2)), peak: Number(peakLevel.toFixed(3)), provider, model, mode: store.settings.mode, audioDevice, prompt: store.settings.transcription.prompt, keywordsCount: (store.settings.transcription.keywords || []).length, transcriptRaw: transcript } };
+    fs.writeFileSync(base + '.json', JSON.stringify(lastSample.meta, null, 2));
+  } catch (e) {
+    console.warn('diagnostic : enregistrement impossible', e.message);
+  }
+}
+
+// Diagnostic : version corrigée de référence = texte copié dans le presse-papiers qui ressemble aux énoncés récents
+// (le courrier relu/corrigé par le praticien avant collage dans le dossier). Stocké dans dictations/<jour>/corrections/.
+const recentTexts = []; // { time, text, base }
+let clipboardWatch = null;
+let lastClipboard = '';
+function rememberDictated(text, base) {
+  recentTexts.push({ time: Date.now(), text, base });
+  while (recentTexts.length > 200) recentTexts.shift();
+}
+function wordSet(s) {
+  return new Set((s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 3));
+}
+async function checkClipboardForCorrection() {
+  try {
+    const text = (await clipboard.readText()) || '';
+    if (text === lastClipboard) return;
+    lastClipboard = text;
+    if (text.length < 150) return;
+    const since = Date.now() - 6 * 3600 * 1000;
+    const candidates = recentTexts.filter((r) => r.time > since);
+    if (!candidates.length) return;
+    const clipWords = wordSet(text);
+    const matched = [];
+    let common = 0;
+    for (const r of candidates) {
+      const ws = wordSet(r.text);
+      let c = 0;
+      for (const w of ws) if (clipWords.has(w)) c++;
+      if (ws.size && c / ws.size >= 0.5) { matched.push(path.basename(r.base)); common += c; }
+    }
+    if (!matched.length || common / Math.max(1, clipWords.size) < 0.4) return;
+    const fs = require('fs');
+    const day = new Date().toISOString().slice(0, 10);
+    const dir = path.join(app.getPath('userData'), 'dictations', day, 'corrections');
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+    fs.writeFileSync(path.join(dir, `${stamp}.json`), JSON.stringify({ time: new Date().toISOString(), text, matchedUtterances: matched }, null, 2));
+    console.log(`diagnostic : version corrigée capturée (${text.length} caractères, ${matched.length} énoncés reliés)`);
+  } catch (e) {
+    console.warn('diagnostic presse-papiers', e.message);
+  }
+}
+function updateClipboardWatch() {
+  const on = !!store.settings.recordDictations;
+  if (on && !clipboardWatch) clipboardWatch = setInterval(checkClipboardForCorrection, 2500);
+  if (!on && clipboardWatch) { clearInterval(clipboardWatch); clipboardWatch = null; }
+}
+
+function completeDictationSample(finalText) {
+  if (!lastSample) return;
+  try {
+    const fs = require('fs');
+    lastSample.meta.transcriptFinal = finalText;
+    fs.writeFileSync(lastSample.base + '.json', JSON.stringify(lastSample.meta, null, 2));
+    rememberDictated(finalText, lastSample.base);
+  } catch {}
+  lastSample = null;
+}
 
 // Hallucinations typiques de whisper sur du bruit ou du silence.
 const WHISPER_HALLUCINATIONS = [/sous-titres? (réalisés?|par)/i, /amara\.org/i, /merci d'avoir regardé/i, /abonnez-vous/i, /^\s*\[[^\]]*\]\s*$/, /^\s*\([^)]*\)\s*$/, /^\s*\.+\s*$/];
@@ -363,7 +442,7 @@ async function stopRecording() {
   try {
     if (local) {
       const pcm = Buffer.concat(pcmChunks);
-      pcmChunks = [];
+      pcmChunks = store.settings.recordDictations ? [pcm] : [];
       const prompt = [store.settings.transcription.prompt, ...(store.settings.transcription.keywords || [])].filter(Boolean).join(' ');
       const r = await localWhisper.transcribe(pcm, { prompt });
       transcript = r.text;
@@ -378,6 +457,8 @@ async function stopRecording() {
     return;
   }
   const model = store.effectiveTranscription().model;
+  if (store.settings.recordDictations) saveDictationSample({ pcm: local ? null : Buffer.concat(pcmChunks), seconds, provider: local ? 'local' : 'openai', model: local ? localWhisper.modelId : model, transcript });
+  pcmChunks = [];
   const usage = store.addUsage({ audioSeconds: seconds, utterances: 1, usd: local ? 0 : audioCost(model, seconds) });
   send('usage', usage);
   if (tray) tray.refresh();
@@ -400,8 +481,13 @@ function cancelRecording() {
   setState('idle', 'annulé');
 }
 
+// Le modèle glisse parfois des caractères d'un autre alphabet (« postopératoire » écrit avec des lettres devanagari) : on les retire.
+function stripForeignScripts(s) {
+  return s.replace(/[^\p{Script=Latin}\p{Script=Common}\p{Script=Greek}\s]/gu, '');
+}
+
 async function processTranscript(raw) {
-  let text = (raw || '').trim();
+  let text = stripForeignScripts((raw || '').trim()).replace(/\s{2,}/g, ' ').trim();
   if (!text) { setState('idle', 'rien entendu'); return; }
   if (looksLikePromptEcho(text, store.settings.transcription.prompt) || looksLikeHallucination(text)) {
     console.log('transcription ignorée : écho du contexte ou hallucination (pas de parole)');
@@ -412,6 +498,7 @@ async function processTranscript(raw) {
   text = correctTranscript(text, { rules: store.settings.transcription.corrections, keywords: store.settings.transcription.keywords, phoneticEnabled: store.settings.transcription.phoneticCorrections !== false });
 
   if (store.settings.mode === 'courrier') {
+    completeDictationSample(text);
     draft = draft ? `${draft}\n${text}` : text;
     sendDraft();
     send('liveText', { text, final: true });
@@ -421,6 +508,7 @@ async function processTranscript(raw) {
 
   // mode dictée directe
   if (store.settings.direct.localPunctuation) text = applyLocalPunctuation(text);
+  completeDictationSample(text);
   lastText = text;
   send('liveText', { text, final: true });
   await pasteText(text);
@@ -476,6 +564,7 @@ async function rediger() {
     if (tray) tray.refresh();
     lastLetter = r.text;
     lastText = r.text;
+    rememberDictated(r.text, path.join(app.getPath('userData'), 'dictations', 'courrier-' + Date.now()));
     draft = '';
     sendDraft();
     send('liveText', { text: r.text, final: true });
@@ -621,6 +710,7 @@ function setupIpc() {
       }
     if (barWin) barWin.webContents.send('capture', { cmd: s.transcription.keepMicrophoneOpen ? 'open' : 'close', deviceId: s.transcription.microphoneId });
     if (partial && partial.launchAtLogin !== undefined) applyLaunchAtLogin();
+    if (partial && partial.recordDictations !== undefined) updateClipboardWatch();
     setState(state);
     if (tray) tray.refresh();
     return s;
@@ -661,6 +751,7 @@ function setupIpc() {
       audioBytes += buf.byteLength;
       return;
     }
+    if (store.settings.recordDictations) pcmChunks.push(Buffer.from(buf));
     if (!rt.isOpen) return;
     try {
       rt.appendAudio(buf);
@@ -676,7 +767,7 @@ function setupIpc() {
   ipcMain.handle('local:delete', (_e, id) => { localWhisper.deleteModel(id); return localWhisper.modelsStatus(); });
   ipcMain.handle('local:select', (_e, id) => { store.saveSettings({ local: { modelId: id } }); localWhisper.stop(); return localModelId(); });
   ipcMain.on('audio:level', (_e, level) => { if (recording && level > peakLevel) peakLevel = level; if (barWin) barWin.webContents.send('level', level); });
-  ipcMain.on('audio:device', (_e, label) => { if (label !== audioDevice) { audioDevice = label; setState(state); } });
+  ipcMain.on('audio:device', (_e, label) => { if (label !== audioDevice) { audioDevice = label; console.log(`micro audio utilisé : ${label}`); setState(state); } });
   ipcMain.on('audio:error', (_e, msg) => { notice('error', `Micro : ${msg}`); if (recording) cancelRecording(); });
 
   ipcMain.on('mic:button', (_e, ev) => onMicButton(ev).catch((err) => notice('error', err.message)));
@@ -744,6 +835,7 @@ app.whenReady().then(() => {
   createTray();
   registerHotkeys();
   applyLaunchAtLogin();
+  updateClipboardWatch();
   if (!store.hasApiKey()) openSettings();
   // vérification des autorisations macOS au démarrage ; demande seulement si quelque chose manque
   // séquence de premier démarrage : droits macOS, puis accès au trousseau (clé API) pour que rien ne surgisse à la première dictée
@@ -751,6 +843,7 @@ app.whenReady().then(() => {
     // le moteur local se charge en parallèle des demandes d'autorisation (elles peuvent attendre l'utilisateur)
     if (store.currentProvider() === 'local') ensureLocalReady().then(() => setState('idle')).catch((e) => console.warn('moteur local', e.message));
     if (process.env.DICTOPEN_TEST_WAV) { setTimeout(() => runSelfTest(process.env.DICTOPEN_TEST_WAV), 12000); }
+    if (process.env.DICTOPEN_BATCH) { setTimeout(() => runBatch(process.env.DICTOPEN_BATCH).catch((e) => console.error('lot', e.message)), 3000); }
     try { await requestPermissions({ quiet: true }); } catch (e) { console.warn('autorisations', e.message); }
     try {
       const key = await store.getApiKey();
@@ -783,6 +876,58 @@ async function runSelfTest(wavPath) {
   } catch (e) {
     console.error('auto-test : échec', e.message);
   }
+}
+
+// Mode lot (diagnostic) : DICTOPEN_BATCH=<dossier de WAV 24 kHz> → rejoue chaque fichier sur plusieurs moteurs OpenAI
+// avec le contexte et les mots-clés des réglages, et écrit <fichier>.batch.json à côté. La clé reste dans le trousseau.
+async function runBatch(dir) {
+  const fs = require('fs');
+  const { RealtimeTranscriber } = require('./realtime');
+  const key = await store.getApiKey();
+  if (!key) { console.error('lot : aucune clé API'); return; }
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.wav') && !f.endsWith('.batch.wav')).sort();
+  const base = store.settings.transcription;
+  const prompt = [base.prompt, ...(base.keywords || [])].filter(Boolean).join(' ');
+  console.log(`lot : ${files.length} fichiers dans ${dir}`);
+  const variants = [
+    { id: 'live-high', model: 'gpt-live-transcribe', delay: 'high' },
+    { id: 'live-medium', model: 'gpt-live-transcribe', delay: 'medium' },
+    { id: 'transcribe', model: 'gpt-transcribe' },
+    { id: '4o-transcribe', model: 'gpt-4o-transcribe' },
+  ];
+  for (const v of variants) {
+    const rtb = new RealtimeTranscriber();
+    rtb.on('error', (e) => console.warn(`lot ${v.id} :`, e.message));
+    try {
+      await rtb.connect(key, { transcription: { ...base, model: v.model, delay: v.delay } });
+    } catch (e) { console.error(`lot ${v.id} : connexion impossible`, e.message); continue; }
+    let done = 0;
+    for (const f of files) {
+      const out = path.join(dir, f.replace(/\.wav$/, '.batch.json'));
+      let results = {};
+      try { results = JSON.parse(fs.readFileSync(out, 'utf8')); } catch {}
+      if (results[v.id] !== undefined) { done++; continue; }
+      try {
+        const pcm = fs.readFileSync(path.join(dir, f)).subarray(44);
+        rtb.clear();
+        for (let off = 0; off < pcm.length; off += 4800) rtb.appendAudio(pcm.subarray(off, Math.min(off + 4800, pcm.length)));
+        const t0 = Date.now();
+        const r = await rtb.commit(60000);
+        results[v.id] = r.transcript;
+        results[v.id + '_ms'] = Date.now() - t0;
+      } catch (e) {
+        results[v.id] = null;
+        results[v.id + '_error'] = e.message;
+        if (!rtb.isOpen) { try { await rtb.connect(key, { transcription: { ...base, model: v.model, delay: v.delay } }); } catch {} }
+      }
+      fs.writeFileSync(out, JSON.stringify(results, null, 2));
+      done++;
+      if (done % 20 === 0) console.log(`lot ${v.id} : ${done}/${files.length}`);
+    }
+    rtb.close();
+    console.log(`lot ${v.id} : terminé (${done})`);
+  }
+  console.log('lot : fin');
 }
 
 app.on('window-all-closed', (e) => e.preventDefault());

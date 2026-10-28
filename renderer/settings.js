@@ -270,6 +270,8 @@
 
   $('launchAtLogin').checked = settings.launchAtLogin !== false;
   $('launchAtLogin').addEventListener('change', () => save({ launchAtLogin: $('launchAtLogin').checked }));
+  $('recordDictations').checked = !!settings.recordDictations;
+  $('recordDictations').addEventListener('change', () => save({ recordDictations: $('recordDictations').checked }));
 
   $('quit').addEventListener('click', () => api.quit());
 })();
