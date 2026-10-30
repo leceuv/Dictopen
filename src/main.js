@@ -289,7 +289,10 @@ function applyLaunchAtLogin() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromDataURL(TRAY_ICON).resize({ width: 18, height: 18 });
+  // Windows ne rastérise pas le SVG en data-URL (icône vide dans la zone de notification) : on prend icon.ico
+  const icon = process.platform === 'win32'
+    ? nativeImage.createFromPath(path.join(__dirname, '..', 'icon.ico')).resize({ width: 16, height: 16 })
+    : nativeImage.createFromDataURL(TRAY_ICON).resize({ width: 18, height: 18 });
   if (process.platform === 'darwin') icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.setToolTip('Dictopen');
