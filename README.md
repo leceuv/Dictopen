@@ -39,6 +39,8 @@ npm run icon-win          # Windows : icône .ico depuis icon-256.png
 npm run package-win       # Windows x64 → dist/
 ```
 
+Outils de développement (variables d'environnement, jamais exposés dans les réglages) : `DICTOPEN_TEST_WAV=<fichier>` rejoue un WAV 24 kHz comme une dictée ; `DICTOPEN_BATCH=<dossier>` rejoue un lot de WAV sur plusieurs moteurs ; `DICTOPEN_RECORD_DICTATIONS=1` conserve chaque énoncé (WAV + transcription) et le texte du presse-papiers apparenté dans `<données>/dictations/`, **en clair** : réservé à un poste de développement, dossier à supprimer ensuite.
+
 Structure : `src/main.js` (processus principal : état, raccourcis, IPC, collage), `src/realtime.js` (WebSocket OpenAI Realtime, mode transcription, PCM 16 bits 24 kHz, commit manuel), `src/redaction.js` (mode Courrier, API Responses), `src/inject.js` (collage : AppleScript Cmd+V sur macOS, SendKeys Ctrl+V sur Windows, presse-papiers sauvegardé puis restauré), `src/store.js` (réglages, clé, consommation), `renderer/` (barre, réglages, capture audio AudioWorklet, SpeechMike WebHID).
 
 ## Confidentialité

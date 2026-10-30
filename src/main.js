@@ -46,7 +46,14 @@ let rightsDialogShown = false;
 const BYTES_PER_SECOND = 24000 * 2;
 const SILENCE_PEAK = 0.04; // en dessous : pas de parole (bruit de fond)
 
-// Diagnostic : conserve l'énoncé (WAV 24 kHz + JSON) dans <données>/dictations/AAAA-MM-JJ/ — jamais synchronisé
+// ---------------------------------------------------------------------------------------------------------------
+// Diagnostic (DÉVELOPPEMENT SEULEMENT) : DICTOPEN_RECORD_DICTATIONS=1 conserve chaque énoncé (WAV 24 kHz + JSON) dans
+// <données>/dictations/AAAA-MM-JJ/ et recopie le texte du presse-papiers ressemblant aux énoncés récents (courrier relu
+// par le praticien) dans dictations/<jour>/corrections/, pour comparer les moteurs et régler la reconnaissance.
+// Ces fichiers contiennent la voix et le texte dicté, en clair : aucun réglage ne permet de l'activer dans l'application
+// distribuée ; à n'utiliser que sur un poste de développement, puis supprimer le dossier.
+// ---------------------------------------------------------------------------------------------------------------
+const RECORD_DICTATIONS = !!process.env.DICTOPEN_RECORD_DICTATIONS;
 let lastSample = null;
 function saveDictationSample({ pcm, seconds, provider, model, transcript }) {
   try {
@@ -108,7 +115,8 @@ async function checkClipboardForCorrection() {
   }
 }
 function updateClipboardWatch() {
-  const on = !!store.settings.recordDictations;
+  const on = RECORD_DICTATIONS;
+  if (on) console.warn('DIAGNOSTIC ACTIF (DICTOPEN_RECORD_DICTATIONS) : dictées et presse-papiers enregistrés en clair dans le dossier de données');
   if (on && !clipboardWatch) clipboardWatch = setInterval(checkClipboardForCorrection, 2500);
   if (!on && clipboardWatch) { clearInterval(clipboardWatch); clipboardWatch = null; }
 }
@@ -424,7 +432,7 @@ async function stopRecording() {
     return;
   }
   const model = store.effectiveTranscription().model;
-  if (store.settings.recordDictations) saveDictationSample({ pcm: Buffer.concat(pcmChunks), seconds, provider: 'openai', model, transcript });
+  if (RECORD_DICTATIONS) saveDictationSample({ pcm: Buffer.concat(pcmChunks), seconds, provider: 'openai', model, transcript });
   pcmChunks = [];
   const usage = store.addUsage({ audioSeconds: seconds, utterances: 1, usd: audioCost(model, seconds) });
   send('usage', usage);
@@ -826,7 +834,6 @@ function setupIpc() {
       }
     if (barWin) barWin.webContents.send('capture', { cmd: s.transcription.keepMicrophoneOpen ? 'open' : 'close', deviceId: s.transcription.microphoneId });
     if (partial && partial.launchAtLogin !== undefined) applyLaunchAtLogin();
-    if (partial && partial.recordDictations !== undefined) updateClipboardWatch();
     setState(state);
     if (tray) tray.refresh();
     return s;
@@ -875,7 +882,7 @@ function setupIpc() {
 
   ipcMain.on('audio:chunk', (_e, buf) => {
     if (!recording) return;
-    if (store.settings.recordDictations) pcmChunks.push(Buffer.from(buf));
+    if (RECORD_DICTATIONS) pcmChunks.push(Buffer.from(buf));
     if (!rt.isOpen) return;
     try {
       rt.appendAudio(buf);
