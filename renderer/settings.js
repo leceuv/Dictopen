@@ -290,23 +290,30 @@
 
   // Textes explicatifs : chaque paragraphe est remplacé par un bouton « ? » placé sur la ligne qu'il commente
   // (ou dans le titre de la section) ; le texte apparaît dans une bulle au survol, ou au clic (touch).
-  let popover = null; let popoverFor = null; let hideTimer = null;
-  const hidePopover = () => { if (popover) { popover.remove(); popover = null; } if (popoverFor) { popoverFor.classList.remove('open'); popoverFor = null; } };
+  let popover = null; let popoverFor = null; let pinned = false;
+  const hidePopover = () => { if (popover) { popover.remove(); popover = null; } if (popoverFor) { popoverFor.classList.remove('open'); popoverFor = null; } pinned = false; };
   const showPopover = (btn, html) => {
     if (popoverFor === btn) return;
     hidePopover();
     popover = document.createElement('div');
     popover.className = 'popover';
     popover.innerHTML = html;
-    popover.addEventListener('mouseenter', () => clearTimeout(hideTimer));
-    popover.addEventListener('mouseleave', () => { hideTimer = setTimeout(hidePopover, 200); });
     document.body.appendChild(popover);
     const r = btn.getBoundingClientRect();
     const w = Math.min(440, window.innerWidth - 24);
     popover.style.width = w + 'px';
     popover.style.left = Math.max(12, Math.min(r.left + window.scrollX, window.innerWidth - w - 12)) + 'px';
-    popover.style.top = (r.bottom + window.scrollY + 6) + 'px';
+    popover.style.top = (r.bottom + window.scrollY + 4) + 'px';
     popoverFor = btn; btn.classList.add('open');
+  };
+  // le « ? » va sur le libellé de la ligne que le texte commente (zones de texte comprises), sinon dans le titre de la section
+  const anchorFor = (p) => {
+    const sec = p.closest('section'); const h2 = sec && sec.querySelector('h2');
+    if (p.classList.contains('section-help')) return h2;
+    let el = p.previousElementSibling;
+    while (el && (el.tagName === 'TEXTAREA' || el.tagName === 'P')) el = el.previousElementSibling;
+    if (el && el.classList.contains('row')) return el.querySelector('label') || el;
+    return h2 || p.parentNode;
   };
   for (const p of document.querySelectorAll('section p.hint')) {
     if (p.id || p.classList.contains('warn') || !p.textContent.trim()) continue;
@@ -314,12 +321,11 @@
     p.classList.add('help-text');
     const b = document.createElement('button');
     b.className = 'help secondary'; b.type = 'button'; b.textContent = '?'; b.title = 'Explication';
-    const prev = p.previousElementSibling;
-    if (prev && (prev.classList.contains('row') || prev.tagName === 'H2')) prev.appendChild(b);
-    else p.parentNode.insertBefore(b, p);
-    b.addEventListener('mouseenter', () => { clearTimeout(hideTimer); showPopover(b, html); });
-    b.addEventListener('mouseleave', () => { hideTimer = setTimeout(hidePopover, 250); });
-    b.addEventListener('click', (e) => { e.preventDefault(); if (popoverFor === b) hidePopover(); else showPopover(b, html); });
+    anchorFor(p).appendChild(b);
+    // survol : apparition et disparition immédiates ; clic : la bulle reste jusqu'au prochain clic
+    b.addEventListener('mouseenter', () => { if (!pinned) showPopover(b, html); });
+    b.addEventListener('mouseleave', () => { if (!pinned) hidePopover(); });
+    b.addEventListener('click', (e) => { e.preventDefault(); if (popoverFor === b && pinned) { hidePopover(); } else { showPopover(b, html); pinned = true; } });
   }
   document.addEventListener('click', (e) => { if (popover && !popover.contains(e.target) && !(e.target.closest && e.target.closest('button.help'))) hidePopover(); });
   window.addEventListener('scroll', hidePopover);
