@@ -43,6 +43,7 @@
   }
 
   // --- clé ---
+  for (const [id, link] of [['linkOpenaiKeys', 'openaiKeys'], ['linkOpenaiBilling', 'openaiBilling'], ['linkAnthropicKeys', 'anthropicKeys']]) $(id).addEventListener('click', () => api.openLink(link));
   async function refreshKey() {
     const m = await api.getApiKeyMasked();
     $('keyMasked').textContent = m || 'aucune';

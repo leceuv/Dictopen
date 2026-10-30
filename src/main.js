@@ -957,6 +957,9 @@ function setupIpc() {
   ipcMain.handle('win:settings', openSettings);
   ipcMain.handle('win:hideBar', () => { if (barWin) barWin.hide(); if (tray) tray.refresh(); });
   ipcMain.handle('app:quit', () => app.quit());
+  // liens ouverts dans le navigateur : liste blanche stricte (les fenêtres sont en bac à sable, aucune navigation libre)
+  const EXTERNAL_LINKS = { openaiKeys: 'https://platform.openai.com/api-keys', openaiBilling: 'https://platform.openai.com/settings/organization/billing/overview', anthropicKeys: 'https://console.anthropic.com/settings/keys', repo: 'https://github.com/leceuv/Dictopen' };
+  ipcMain.handle('link:open', (_e, id) => { const url = EXTERNAL_LINKS[String(id)]; if (url) shell.openExternal(url); return !!url; });
   // extension « Dictopen pour Chrome » : copiée hors de l'application (Chrome ne lit pas dans l'archive asar), dossier montré, page des extensions ouverte
   ipcMain.handle('extension:install', async () => {
     const fs = require('fs');

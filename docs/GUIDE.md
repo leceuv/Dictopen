@@ -24,7 +24,7 @@ Chaque utilisateur utilise **sa propre clé API OpenAI** : la dictée est factur
 
 ## 3. Clé API OpenAI
 
-1. Sur <https://platform.openai.com> : créez un compte (ou utilisez le vôtre), ajoutez un moyen de paiement, puis **API keys → Create new secret key**. Copiez la clé (elle commence par `sk-`).
+1. Sur <https://platform.openai.com> : créez un compte (ou utilisez le vôtre), ajoutez un moyen de paiement (Billing), puis **API keys → Create new secret key**. Copiez la clé (elle commence par `sk-`, affichée une seule fois). Les boutons de la section *Clé API OpenAI* des réglages ouvrent directement ces pages.
 2. Dans l'app : ⚙ Réglages → **Clé API OpenAI** → bouton **Coller** → **Enregistrer** → **Tester** (doit afficher « clé valide »).
 La clé est chiffrée dans le trousseau de votre Mac.
 

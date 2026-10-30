@@ -69,6 +69,8 @@
 
   <section>
     <h2>Clé API OpenAI</h2>
+    <p class="hint">Dictopen utilise votre propre compte OpenAI (facturation à l'usage, ≈ 0,005 $ par minute de dictée). Pour obtenir une clé : 1. créez un compte ou connectez-vous sur platform.openai.com ; 2. ajoutez un moyen de paiement (menu Billing) ; 3. page « API keys » → <b>Create new secret key</b> → copiez la clé (elle commence par <code>sk-</code>, elle n'est affichée qu'une fois) ; 4. revenez ici → <b>Coller</b> → <b>Enregistrer</b> → <b>Tester</b>. La clé est chiffrée sur cet ordinateur et ne sert qu'à vos dictées.</p>
+    <div class="row"><label>Obtenir une clé</label><button class="secondary" id="linkOpenaiKeys">Ouvrir platform.openai.com → API keys</button><button class="secondary" id="linkOpenaiBilling">Facturation</button></div>
     <div class="row"><label>Clé enregistrée</label><span id="keyMasked" class="hint">aucune</span></div>
     <div class="row"><label>Nouvelle clé</label><input type="password" id="keyInput" placeholder="sk-…" autocomplete="off"><button class="secondary" id="keyPaste" title="Coller la clé depuis le presse-papiers">Coller</button><button id="keySave">Enregistrer</button><button class="secondary" id="keyTest">Tester</button></div>
     <p class="hint" id="keyResult"></p>
@@ -126,7 +128,8 @@
       </select></div>
     <div class="row k-anthropic"><label>Clé Anthropic enregistrée</label><span id="akeyMasked" class="hint">aucune</span></div>
     <div class="row k-anthropic"><label>Nouvelle clé Anthropic</label><input type="password" id="akeyInput" placeholder="sk-ant-…" autocomplete="off"><button class="secondary" id="akeyPaste">Coller</button><button id="akeySave">Enregistrer</button><button class="secondary" id="akeyTest">Tester</button></div>
-    <p class="hint k-anthropic" id="akeyResult">Clé créée sur console.anthropic.com.</p>
+    <div class="row k-anthropic"><label>Obtenir une clé</label><button class="secondary" id="linkAnthropicKeys">Ouvrir console.anthropic.com → API keys</button></div>
+    <p class="hint k-anthropic" id="akeyResult"></p>
     <div class="row k-claude-code"><label>Modèle Claude Code</label>
       <select id="k_claudeCodeModel"><option value="sonnet">Sonnet (recommandé)</option><option value="haiku">Haiku (rapide)</option><option value="opus">Opus (le plus soigné, lent)</option></select>
       <button class="secondary" id="ccTest">Vérifier l'installation</button><span class="hint" id="ccResult"></span></div>
