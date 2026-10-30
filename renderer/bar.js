@@ -36,14 +36,28 @@
     $('btnCorrect').disabled = state === 'correcting' || state === 'writing';
     const keyLabel = hotkey ? hotkey.replace('Ctrl', '⌃').replace('Alt', '⌥').replace('Shift', '⇧').replace('Cmd', '⌘').replace(/\+/g, '') : '';
     const devLabel = (audioDevice || 'micro ?').replace(/^default\s*-\s*/i, '').replace(/\s*\((built-in|intégré)\)\s*/i, '');
+    // noms de périphériques (HID, micro) insérés comme texte, jamais comme HTML
+    const micEl = $('mic');
+    micEl.replaceChildren();
     if (mic && mic.connected) {
       // boutons = HID du SpeechMike ; si l'audio vient d'un autre micro, on le signale
       const audioIsSpeechMike = /speechmike|powermic|rm-40|microphone streaming/i.test(audioDevice || '');
-      $('mic').innerHTML = '● ' + (mic.name || 'micro').replace(/</g, '&lt;') + (audioIsSpeechMike || !audioDevice ? '' : ` — <span style="color:#f5b74a">son : ${devLabel.replace(/</g, '&lt;')}</span>`);
-      $('mic').title = audioIsSpeechMike ? 'SpeechMike connecté (boutons et son)' : `Boutons : SpeechMike ; son capté par « ${audioDevice} » — changez le micro dans les réglages`;
+      micEl.append('● ' + (mic.name || 'micro'));
+      if (!audioIsSpeechMike && audioDevice) {
+        const son = document.createElement('span');
+        son.style.color = '#f5b74a';
+        son.textContent = `son : ${devLabel}`;
+        micEl.append(' — ', son);
+      }
+      micEl.title = audioIsSpeechMike ? 'SpeechMike connecté (boutons et son)' : `Boutons : SpeechMike ; son capté par « ${audioDevice} » — changez le micro dans les réglages`;
     } else {
-      $('mic').innerHTML = '🎤 ' + devLabel.replace(/</g, '&lt;') + (keyLabel ? ` — dicter : <kbd>${keyLabel.replace(/</g, '&lt;')}</kbd>` : '');
-      $('mic').title = `Pas de SpeechMike : micro « ${audioDevice || '?'} » ; dicter avec la touche ${hotkey || '(aucune)'} (marche/arrêt)`;
+      micEl.append('🎤 ' + devLabel);
+      if (keyLabel) {
+        const kbd = document.createElement('kbd');
+        kbd.textContent = keyLabel;
+        micEl.append(' — dicter : ', kbd);
+      }
+      micEl.title = `Pas de SpeechMike : micro « ${audioDevice || '?'} » ; dicter avec la touche ${hotkey || '(aucune)'} (marche/arrêt)`;
     }
     $('text').dataset.placeholder = mic && mic.connected ? PLACEHOLDER[mode] : PLACEHOLDER[mode].replace('Maintenez Record', `Appuyez sur ${keyLabel || 'la touche de dictée'}`).replace('plusieurs appuis possibles', `${keyLabel || 'touche'} pour démarrer et arrêter`);
     $('mic').classList.toggle('on', !!(mic && mic.connected));

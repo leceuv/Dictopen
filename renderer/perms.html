@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Autorisations — Dictopen</title>
 <style>
   :root { color-scheme: light dark; --bg:#f4f4f6; --card:#fff; --fg:#1c1c22; --muted:#6b6b76; --line:#e2e2e8; --accent:#2f6fed; --ok:#2a9d6a; }
@@ -25,30 +26,6 @@
   <p class="intro">Dictopen a besoin de ces droits macOS pour coller le texte dicté. Cette fenêtre se fermera d'elle-même quand tout sera accordé.</p>
   <div id="list"></div>
   <div class="footer"><button class="secondary" id="later">Plus tard</button></div>
-<script>
-(() => {
-  const api = window.dictee;
-  const ITEMS = {
-    microphone: { title: 'Micro', hint: 'Réglages Système → Confidentialité et sécurité → Microphone → activer Dictopen.', pane: 'Privacy_Microphone' },
-    accessibility: { title: 'Accessibilité', hint: 'Réglages Système → Confidentialité et sécurité → Accessibilité → activer Dictopen. S’il n’est pas dans la liste : bouton + puis choisir Dictopen dans Applications. S’il est déjà coché : décocher puis recocher.', pane: 'Privacy_Accessibility' },
-    automation: { title: 'Automatisation (System Events)', hint: 'Réglages Système → Confidentialité et sécurité → Automatisation → Dictopen → System Events.', pane: 'Privacy_Automation' },
-  };
-  const list = document.getElementById('list');
-  function render(st) {
-    const missing = Object.keys(ITEMS).filter((k) => st[k] !== 'granted');
-    if (!missing.length) { list.innerHTML = '<div class="done">Toutes les autorisations sont accordées.</div>'; return true; }
-    list.innerHTML = missing.map((k) => `<div class="item"><div class="txt"><b>${ITEMS[k].title}</b><span>${ITEMS[k].hint}</span></div><button data-pane="${ITEMS[k].pane}">Ouvrir</button></div>`).join('');
-    return false;
-  }
-  list.addEventListener('click', (e) => { const b = e.target.closest('button[data-pane]'); if (b) api.openPrivacyPane(b.dataset.pane); });
-  document.getElementById('later').addEventListener('click', () => api.closePermissionsWindow());
-  async function tick() {
-    const st = await api.checkPermissions();
-    if (render(st)) setTimeout(() => api.closePermissionsWindow(), 1200);
-    else setTimeout(tick, 2000);
-  }
-  tick();
-})();
-</script>
+<script src="perms.js"></script>
 </body>
 </html>

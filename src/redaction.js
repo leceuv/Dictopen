@@ -165,10 +165,11 @@ function correctWithClaudeCode(model, instructions, text) {
   return new Promise((resolve, reject) => {
     const exe = findClaudeCode();
     if (!exe) return reject(new Error('Claude Code introuvable : installez l’application Claude (ou la commande claude) et connectez-vous'));
-    const cwd = path.join(os.tmpdir(), 'dictopen-claude-cwd'); // dossier vide : aucun CLAUDE.md ni réglage de projet
-    fs.mkdirSync(cwd, { recursive: true });
+    // dossier privé à nom aléatoire (droits 700), vide : aucun CLAUDE.md ni réglage de projet ; supprimé à la fin
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dictopen-claude-'));
+    const nettoyer = () => { try { fs.rmSync(cwd, { recursive: true, force: true }); } catch {} };
     const promptFile = path.join(cwd, 'prompt-correction.txt');
-    fs.writeFileSync(promptFile, instructions);
+    fs.writeFileSync(promptFile, instructions, { mode: 0o600 });
     const args = ['-p', '--model', ['sonnet', 'haiku', 'opus'].includes(model) ? model : 'sonnet', '--system-prompt-file', promptFile, '--tools=', '--strict-mcp-config',
       '--setting-sources=project', '--disable-slash-commands', '--no-session-persistence', '--output-format', 'json'];
     const env = { ...process.env, MAX_THINKING_TOKENS: '0', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
@@ -182,9 +183,10 @@ function correctWithClaudeCode(model, instructions, text) {
     proc.stdout.on('data', (d) => { out += d; });
     proc.stderr.on('data', (d) => { err += d; });
     const timer = setTimeout(() => proc.kill(), 120000);
-    proc.on('error', (e) => { clearTimeout(timer); reject(new Error(`Lancement de Claude Code impossible : ${e.message}`)); });
+    proc.on('error', (e) => { clearTimeout(timer); nettoyer(); reject(new Error(`Lancement de Claude Code impossible : ${e.message}`)); });
     proc.on('close', () => {
       clearTimeout(timer);
+      nettoyer();
       let r;
       try { r = JSON.parse(out); } catch { return reject(new Error((err || out || 'réponse illisible de Claude Code').trim().slice(0, 300))); }
       if (r.is_error) {

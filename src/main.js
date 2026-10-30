@@ -172,6 +172,9 @@ function sendDraft() {
 // diagnostic des fenêtres : erreurs de chargement, plantages du rendu, console (niveaux warn/error)
 function watchWindow(win, label) {
   const wc = win.webContents;
+  // nos pages ne naviguent jamais et n'ouvrent aucune fenêtre : tout le reste est refusé
+  wc.on('will-navigate', (e, url) => { if (!url.startsWith(RENDERER_URL)) { e.preventDefault(); console.warn(`${label} : navigation refusée vers ${url}`); } });
+  wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   wc.on('did-fail-load', (_e, code, desc, url) => console.error(`${label} : échec de chargement ${code} ${desc} ${url}`));
   wc.on('render-process-gone', (_e, details) => console.error(`${label} : rendu interrompu`, details));
   wc.on('console-message', (ev) => {
@@ -201,7 +204,7 @@ function createBar() {
     skipTaskbar: true,
     hasShadow: true,
     backgroundColor: '#1e1f24',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
   barWin.setAlwaysOnTop(true, 'floating');
   barWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -229,7 +232,7 @@ function openSettings() {
     title: 'Réglages — Dictopen',
     backgroundColor: '#f4f4f6',
     autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
   watchWindow(settingsWin, 'réglages');
   settingsWin.loadFile(path.join(__dirname, '..', 'renderer', 'settings.html'));
@@ -529,7 +532,7 @@ function openReviewWindow() {
     title: 'Correction — Dictopen',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1f22' : '#ffffff',
     autoHideMenuBar: true, alwaysOnTop: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
   watchWindow(reviewWin, 'correction');
   reviewWin.loadFile(path.join(__dirname, '..', 'renderer', 'review.html'));
@@ -750,7 +753,7 @@ function openPermissionsWindow() {
   permsWin = new BrowserWindow({
     width: 520, height: 330, resizable: false, minimizable: false, maximizable: false, alwaysOnTop: true,
     title: 'Autorisations — Dictopen', backgroundColor: '#f4f4f6', autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
   watchWindow(permsWin, 'autorisations');
   permsWin.loadFile(path.join(__dirname, '..', 'renderer', 'perms.html'));
@@ -947,12 +950,18 @@ function setupIpc() {
 }
 
 // --- WebHID : autoriser le SpeechMike sans boîte de dialogue ---
+// Seules nos propres pages (fichiers du dossier renderer/) obtiennent micro et HID.
+const RENDERER_URL = require('url').pathToFileURL(path.join(__dirname, '..', 'renderer') + path.sep).href;
+function isOurPage(wc) {
+  try { return !!wc && !wc.isDestroyed() && wc.getURL().startsWith(RENDERER_URL); } catch { return false; }
+}
 function setupHidPermissions() {
   const { session } = require('electron');
   const ses = session.defaultSession;
-  ses.setPermissionCheckHandler((_wc, permission) => ['hid', 'media', 'audioCapture'].includes(permission));
-  ses.setPermissionRequestHandler((_wc, permission, cb) => cb(['hid', 'media', 'audioCapture'].includes(permission)));
-  ses.setDevicePermissionHandler((details) => details.deviceType === 'hid');
+  const ALLOWED = ['hid', 'media', 'audioCapture'];
+  ses.setPermissionCheckHandler((wc, permission) => isOurPage(wc) && ALLOWED.includes(permission));
+  ses.setPermissionRequestHandler((wc, permission, cb) => cb(isOurPage(wc) && ALLOWED.includes(permission)));
+  ses.setDevicePermissionHandler((details) => details.deviceType === 'hid' && details.origin === 'file://');
   ses.on('select-hid-device', (event, details, callback) => {
     event.preventDefault();
     const dev = details.deviceList.find((d) => /speechmike|powermic|rm-40|microphone streaming/i.test(d.productName || '')) || details.deviceList[0];

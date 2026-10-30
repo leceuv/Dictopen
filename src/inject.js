@@ -241,25 +241,36 @@ for ($i = 0; $i -lt 60; $i++) {
   }
 }
 
-async function pressHotkey(accelerator) {
-  // accelerator façon Electron : "Ctrl+Alt+Escape" → System Events (macOS) ou SendKeys (Windows)
-  const parts = accelerator.split('+').map((s) => s.trim()).filter(Boolean);
+// Accélérateur façon Electron (« Ctrl+Alt+Escape ») → { key, mods }. Validation stricte : les accélérateurs viennent des
+// réglages (fichier JSON modifiable à la main) et finissent dans un script AppleScript / PowerShell, donc rien d'autre
+// qu'un modificateur connu et une touche de la liste blanche n'est accepté.
+const ACCEL_MODS = { ctrl: 'control', control: 'control', alt: 'option', option: 'option', shift: 'shift', cmd: 'command', command: 'command', meta: 'command', super: 'command' };
+const ACCEL_NAMED = new Set(['Escape', 'Return', 'Enter', 'Tab', 'Space', 'Backspace', 'Delete', 'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown']);
+const ACCEL_PUNCT = "`-=[]\\;',./"; // touches de ponctuation d'un clavier ANSI
+function parseAccelerator(accelerator) {
+  const parts = String(accelerator || '').split('+').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) throw new Error('raccourci vide');
   const key = parts.pop();
-  if (IS_WIN) {
-    const SK = { Escape: '{ESC}', Return: '{ENTER}', Enter: '{ENTER}', Tab: '{TAB}', Space: ' ', Backspace: '{BS}', Delete: '{DEL}', Up: '{UP}', Down: '{DOWN}', Left: '{LEFT}', Right: '{RIGHT}', Home: '{HOME}', End: '{END}', PageUp: '{PGUP}', PageDown: '{PGDN}' };
-    let keys = '';
-    for (const p of parts) { const q = p.toLowerCase(); if (q === 'ctrl' || q === 'control') keys += '^'; else if (q === 'alt' || q === 'option') keys += '%'; else if (q === 'shift') keys += '+'; }
-    keys += SK[key] || (/^F\d+$/.test(key) ? `{${key}}` : key.length === 1 ? key.toLowerCase().replace(/[+^%~(){}\[\]]/g, (c) => `{${c}}`) : `{${key}}`);
-    await runPowerShell(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keys.replace(/'/g, "''")}')`);
-    return;
-  }
   const mods = [];
   for (const p of parts) {
-    const q = p.toLowerCase();
-    if (q === 'ctrl' || q === 'control') mods.push('control down');
-    else if (q === 'alt' || q === 'option') mods.push('option down');
-    else if (q === 'shift') mods.push('shift down');
-    else if (q === 'cmd' || q === 'command' || q === 'meta' || q === 'super') mods.push('command down');
+    const m = ACCEL_MODS[p.toLowerCase()];
+    if (!m) throw new Error(`raccourci « ${accelerator} » : modificateur inconnu « ${p} »`);
+    if (!mods.includes(m)) mods.push(m);
+  }
+  const ok = /^[A-Za-z0-9]$/.test(key) || /^F([1-9]|1[0-9]|2[0-4])$/.test(key) || ACCEL_NAMED.has(key) || (key.length === 1 && ACCEL_PUNCT.includes(key));
+  if (!ok) throw new Error(`raccourci « ${accelerator} » : touche non prise en charge « ${key} »`);
+  return { key, mods };
+}
+
+async function pressHotkey(accelerator) {
+  const { key, mods } = parseAccelerator(accelerator); // → System Events (macOS) ou SendKeys (Windows)
+  if (IS_WIN) {
+    const SK = { Escape: '{ESC}', Return: '{ENTER}', Enter: '{ENTER}', Tab: '{TAB}', Space: ' ', Backspace: '{BS}', Delete: '{DEL}', Up: '{UP}', Down: '{DOWN}', Left: '{LEFT}', Right: '{RIGHT}', Home: '{HOME}', End: '{END}', PageUp: '{PGUP}', PageDown: '{PGDN}' };
+    const PREFIX = { control: '^', option: '%', shift: '+' }; // pas de touche Windows dans SendKeys
+    let keys = mods.map((m) => PREFIX[m] || '').join('');
+    keys += SK[key] || (/^F\d+$/.test(key) ? `{${key}}` : key.toLowerCase().replace(/[+^%~(){}\[\]]/g, (c) => `{${c}}`));
+    await runPowerShell(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keys.replace(/'/g, "''")}')`);
+    return;
   }
   // lettres et chiffres par code de touche (disposition ANSI) : avec Option, « keystroke » enverrait le caractère spécial
   // (⌥⇧C → Ç) et le raccourci ne serait pas reconnu par l'application
@@ -267,11 +278,12 @@ async function pressHotkey(accelerator) {
     F1: 122, F2: 120, F3: 99, F4: 118, F5: 96, F6: 97, F7: 98, F8: 100, F9: 101, F10: 109, F11: 103, F12: 111,
     A: 0, S: 1, D: 2, F: 3, H: 4, G: 5, Z: 6, X: 7, C: 8, V: 9, B: 11, Q: 12, W: 13, E: 14, R: 15, Y: 16, T: 17, O: 31, U: 32, I: 34, P: 35, L: 37, J: 38, K: 40, N: 45, M: 46,
     1: 18, 2: 19, 3: 20, 4: 21, 6: 22, 5: 23, 9: 25, 7: 26, 8: 28, 0: 29 };
-  const using = mods.length ? ` using {${mods.join(', ')}}` : '';
+  const using = mods.length ? ` using {${mods.map((m) => `${m} down`).join(', ')}}` : '';
   const code = KEYCODES[key] !== undefined ? KEYCODES[key] : KEYCODES[key.toUpperCase()];
+  // sinon : un seul caractère de ponctuation de la liste blanche ; seule la barre oblique inverse demande un échappement
   const script = code !== undefined
     ? `tell application "System Events" to key code ${code}${using}`
-    : `tell application "System Events" to keystroke "${key.toLowerCase().replace(/"/g, '\\"')}"${using}`;
+    : `tell application "System Events" to keystroke "${key === '\\' ? '\\\\' : key}"${using}`;
   await runOsa(script);
 }
 
