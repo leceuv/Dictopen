@@ -22,10 +22,10 @@
   button.secondary { background:var(--line); color:var(--fg); }
   .hint { color:var(--muted); font-size:12px; margin:4px 0 0; }
   section h2 { display:flex; align-items:center; gap:8px; }
-  button.help { width:20px; height:20px; padding:0; border-radius:50%; background:var(--line); color:var(--muted); font-size:12px; font-weight:700; line-height:20px; }
-  section.help-open button.help { background:var(--accent); color:#fff; }
-  section p.hint.help-text { display:none; }
-  section.help-open p.hint.help-text { display:block; }
+  button.help { width:18px; height:18px; padding:0; border-radius:50%; background:var(--line); color:var(--muted); font-size:11px; font-weight:700; line-height:18px; flex:0 0 auto; margin-left:6px; }
+  button.help:hover, button.help.open { background:var(--accent); color:#fff; }
+  p.hint.help-text { display:none; }
+  .popover { position:absolute; z-index:50; max-width:440px; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.45; box-shadow:0 6px 24px rgba(0,0,0,.18); }
   .warn { color:#d14343; }
   .ok { color:#2a9d6a; } .ko { color:#d14343; }
   table { border-collapse:collapse; width:100%; }

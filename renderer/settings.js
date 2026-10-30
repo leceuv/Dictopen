@@ -288,18 +288,41 @@
   $('launchAtLogin').checked = settings.launchAtLogin !== false;
   $('launchAtLogin').addEventListener('change', () => save({ launchAtLogin: $('launchAtLogin').checked }));
 
-  // textes explicatifs repliés : bouton « ? » dans le titre de chaque section qui en contient
-  for (const sec of document.querySelectorAll('section')) {
-    const textes = [...sec.querySelectorAll(':scope > p.hint')].filter((p) => !p.id && !p.classList.contains('warn'));
-    if (!textes.length) continue;
-    for (const p of textes) p.classList.add('help-text');
-    const h2 = sec.querySelector('h2');
-    if (!h2) continue;
+  // Textes explicatifs : chaque paragraphe est remplacé par un bouton « ? » placé sur la ligne qu'il commente
+  // (ou dans le titre de la section) ; le texte apparaît dans une bulle au survol, ou au clic (touch).
+  let popover = null; let popoverFor = null; let hideTimer = null;
+  const hidePopover = () => { if (popover) { popover.remove(); popover = null; } if (popoverFor) { popoverFor.classList.remove('open'); popoverFor = null; } };
+  const showPopover = (btn, html) => {
+    if (popoverFor === btn) return;
+    hidePopover();
+    popover = document.createElement('div');
+    popover.className = 'popover';
+    popover.innerHTML = html;
+    popover.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+    popover.addEventListener('mouseleave', () => { hideTimer = setTimeout(hidePopover, 200); });
+    document.body.appendChild(popover);
+    const r = btn.getBoundingClientRect();
+    const w = Math.min(440, window.innerWidth - 24);
+    popover.style.width = w + 'px';
+    popover.style.left = Math.max(12, Math.min(r.left + window.scrollX, window.innerWidth - w - 12)) + 'px';
+    popover.style.top = (r.bottom + window.scrollY + 6) + 'px';
+    popoverFor = btn; btn.classList.add('open');
+  };
+  for (const p of document.querySelectorAll('section p.hint')) {
+    if (p.id || p.classList.contains('warn') || !p.textContent.trim()) continue;
+    const html = p.innerHTML;
+    p.classList.add('help-text');
     const b = document.createElement('button');
-    b.className = 'help secondary'; b.type = 'button'; b.textContent = '?'; b.title = 'Explications';
-    b.addEventListener('click', () => sec.classList.toggle('help-open'));
-    h2.appendChild(b);
+    b.className = 'help secondary'; b.type = 'button'; b.textContent = '?'; b.title = 'Explication';
+    const prev = p.previousElementSibling;
+    if (prev && (prev.classList.contains('row') || prev.tagName === 'H2')) prev.appendChild(b);
+    else p.parentNode.insertBefore(b, p);
+    b.addEventListener('mouseenter', () => { clearTimeout(hideTimer); showPopover(b, html); });
+    b.addEventListener('mouseleave', () => { hideTimer = setTimeout(hidePopover, 250); });
+    b.addEventListener('click', (e) => { e.preventDefault(); if (popoverFor === b) hidePopover(); else showPopover(b, html); });
   }
+  document.addEventListener('click', (e) => { if (popover && !popover.contains(e.target) && !(e.target.closest && e.target.closest('button.help'))) hidePopover(); });
+  window.addEventListener('scroll', hidePopover);
 
   $('quit').addEventListener('click', () => api.quit());
 })();
