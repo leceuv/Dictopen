@@ -8,23 +8,18 @@ const DEFAULTS = {
   // 'direct' = chaque énoncé est collé dans l'application active ; 'courrier' = la dictée s'accumule, puis « Rédiger » produit le courrier
   mode: 'direct',
   direct: {
-    provider: 'openai', // 'openai' ou 'local'
     transcriptionModel: 'gpt-live-transcribe',
     delay: 'low',
     localPunctuation: true, // « virgule », « point à la ligne »… convertis localement
     recordButtonMode: 'pressed', // appuyer-parler
   },
   courrier: {
-    provider: 'openai',
     transcriptionModel: 'gpt-transcribe',
     delay: 'low',
     draftModel: 'gpt-5',
     reasoningEffort: 'low',
     masterPrompt: '', // vide = prompt maître par défaut (redaction.js)
     recordButtonMode: 'toggle', // marche / arrêt
-  },
-  local: {
-    modelId: '', // vide = modèle recommandé pour la machine
   },
   // « Corriger la sélection » : le texte sélectionné dans l'application active est relu par un modèle texte et recollé à sa place
   correction: {
@@ -183,9 +178,8 @@ class Store {
     return this.settings[this.settings.mode] || this.settings.direct;
   }
 
-  // fournisseur de transcription du mode courant : 'openai' ou 'local'
   currentProvider() {
-    return this.current().provider === 'local' ? 'local' : 'openai';
+    return 'openai';
   }
 
   // réglages de transcription effectifs pour le mode courant

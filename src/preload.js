@@ -18,13 +18,6 @@ contextBridge.exposeInMainWorld('dictee', {
   setApiKey: (key, provider) => ipcRenderer.invoke('apikey:set', key, provider),
   testApiKey: (provider) => ipcRenderer.invoke('apikey:test', provider),
   readClipboardText: () => ipcRenderer.invoke('clipboard:readText'),
-  // transcription locale
-  localStatus: () => ipcRenderer.invoke('local:status'),
-  localDownload: (id) => ipcRenderer.invoke('local:download', id),
-  localCancel: (id) => ipcRenderer.invoke('local:cancel', id),
-  localDelete: (id) => ipcRenderer.invoke('local:delete', id),
-  localSelect: (id) => ipcRenderer.invoke('local:select', id),
-  onLocalDownload: (cb) => on('localDownload', cb),
   // consommation
   getUsage: () => ipcRenderer.invoke('usage:get'),
   resetUsage: () => ipcRenderer.invoke('usage:reset'),

@@ -8,9 +8,8 @@ const { LocalApi } = require('./local-api');
 const { applyLocalPunctuation } = require('./punctuation');
 const { pasteIntoActiveApp, pressHotkey, copySelectionNow, withTargetApp } = require('./inject');
 const { audioCost, textCost } = require('./pricing');
-const { LocalWhisper, recommendedModelId } = require('./local-whisper');
 const { correctTranscript } = require('./corrections');
-const { wavFromPcm16 } = require('./local-whisper');
+const { wavFromPcm16 } = require('./wav');
 
 app.setName('Dictopen');
 
@@ -39,7 +38,6 @@ let draft = ''; // mode courrier : dictée accumulée (brute)
 let lastLetter = ''; // mode courrier : dernier courrier rédigé (pour les corrections)
 let micStatus = { connected: false, name: '' };
 let panelShown = false; // zone de texte de la barre (masquée par défaut : barre fine)
-let localWhisper = null; // moteur local (whisper.cpp)
 let pcmChunks = []; // audio de l'énoncé en cours, conservé seulement en transcription locale
 let audioDevice = '';
 let rightsDialogShown = false;
@@ -327,7 +325,7 @@ function setMode(mode) {
   if (mode !== 'direct' && mode !== 'courrier') return;
   if (recording) cancelRecording();
   store.saveSettings({ mode });
-  rt.close(); // le modèle de transcription peut différer : la session sera rouverte (le moteur local reste chargé)
+  rt.close(); // le modèle de transcription peut différer : la session sera rouverte
   applyBarSize();
   setState('idle');
   if (tray) tray.refresh();
@@ -347,33 +345,8 @@ function newDraft() {
   setState(state === 'listening' ? state : 'idle', 'nouveau courrier');
 }
 
-// --- moteur local ---
-function localModelId() {
-  return store.settings.local.modelId || recommendedModelId();
-}
-
-function setupLocalWhisper() {
-  const binDir = app.isPackaged
-    ? path.join(process.resourcesPath, `${process.platform}-${process.arch}`)
-    : path.join(__dirname, '..', 'bin', `${process.platform}-${process.arch}`);
-  localWhisper = new LocalWhisper({ modelsDir: path.join(app.getPath('userData'), 'models'), binDir, logger: console });
-  localWhisper.on('download', (p) => send('localDownload', p));
-  localWhisper.on('status', (s) => { if (s === 'stopped' && state !== 'idle' && !recording) setState('idle'); });
-}
-
-async function ensureLocalReady() {
-  const id = localModelId();
-  if (!localWhisper.isAvailable()) throw new Error('Transcription locale indisponible sur cette machine (moteur absent) : choisissez OpenAI dans les réglages');
-  if (!localWhisper.isModelInstalled(id)) { openSettings(); throw new Error('Modèle local non téléchargé : Réglages → Transcription locale'); }
-  if (!(localWhisper.ready && localWhisper.modelId === id)) {
-    setState('connecting', 'chargement du modèle local');
-    await localWhisper.ensureServer(id, { language: (store.settings.transcription.languages || ['fr'])[0] || 'fr' });
-  }
-}
-
-// --- connexion (OpenAI ou locale selon le mode) ---
+// --- connexion OpenAI ---
 async function ensureConnected() {
-  if (store.currentProvider() === 'local') return ensureLocalReady();
   if (rt.isOpen) return;
   const key = await store.getApiKey();
   if (!key) {
@@ -411,7 +384,7 @@ async function startRecording() {
   audioBytes = 0;
   peakLevel = 0;
   pcmChunks = [];
-  if (store.currentProvider() !== 'local') rt.clear();
+  rt.clear();
   send('liveText', { text: '', final: false });
   if (barWin) barWin.webContents.send('capture', { cmd: 'start', deviceId: store.settings.transcription.microphoneId });
   setState('listening');
@@ -426,16 +399,15 @@ async function stopRecording() {
   const seconds = audioBytes / BYTES_PER_SECOND;
   setRecordLed(false);
   console.log(`dictée : fin, ${seconds.toFixed(2)} s d'audio`);
-  const local = store.currentProvider() === 'local';
   if (seconds < 0.25) {
-    if (!local) rt.clear();
+    rt.clear();
     pcmChunks = [];
     setState('idle', 'trop court');
     return;
   }
   if (peakLevel < SILENCE_PEAK) {
     console.log(`dictée : silence (crête ${peakLevel.toFixed(3)}), rien envoyé`);
-    if (!local) rt.clear();
+    rt.clear();
     pcmChunks = [];
     setState('idle', 'silence');
     return;
@@ -443,26 +415,17 @@ async function stopRecording() {
   setState('transcribing');
   let transcript;
   try {
-    if (local) {
-      const pcm = Buffer.concat(pcmChunks);
-      pcmChunks = store.settings.recordDictations ? [pcm] : [];
-      const prompt = [store.settings.transcription.prompt, ...(store.settings.transcription.keywords || [])].filter(Boolean).join(' ');
-      const r = await localWhisper.transcribe(pcm, { prompt });
-      transcript = r.text;
-      console.log(`transcription locale (${localWhisper.modelId}) : ${transcript.length} caractères en ${r.ms} ms`);
-    } else {
-      ({ transcript } = await rt.commit());
-      console.log(`transcription reçue : ${(transcript || '').length} caractères`);
-    }
+    ({ transcript } = await rt.commit());
+    console.log(`transcription reçue : ${(transcript || '').length} caractères`);
   } catch (e) {
     setState('error', e.message);
     notice('error', e.message);
     return;
   }
   const model = store.effectiveTranscription().model;
-  if (store.settings.recordDictations) saveDictationSample({ pcm: local ? null : Buffer.concat(pcmChunks), seconds, provider: local ? 'local' : 'openai', model: local ? localWhisper.modelId : model, transcript });
+  if (store.settings.recordDictations) saveDictationSample({ pcm: Buffer.concat(pcmChunks), seconds, provider: 'openai', model, transcript });
   pcmChunks = [];
-  const usage = store.addUsage({ audioSeconds: seconds, utterances: 1, usd: local ? 0 : audioCost(model, seconds) });
+  const usage = store.addUsage({ audioSeconds: seconds, utterances: 1, usd: audioCost(model, seconds) });
   send('usage', usage);
   if (tray) tray.refresh();
   await processTranscript(transcript);
@@ -479,7 +442,7 @@ function cancelRecording() {
     if (barWin) barWin.webContents.send('capture', { cmd: 'stop' });
   }
   pcmChunks = [];
-  if (store.currentProvider() !== 'local') rt.clear();
+  rt.clear();
   send('liveText', { text: '', final: false });
   setState('idle', 'annulé');
 }
@@ -891,11 +854,6 @@ function setupIpc() {
 
   ipcMain.on('audio:chunk', (_e, buf) => {
     if (!recording) return;
-    if (store.currentProvider() === 'local') {
-      pcmChunks.push(Buffer.from(buf));
-      audioBytes += buf.byteLength;
-      return;
-    }
     if (store.settings.recordDictations) pcmChunks.push(Buffer.from(buf));
     if (!rt.isOpen) return;
     try {
@@ -905,12 +863,6 @@ function setupIpc() {
       notice('error', e.message);
     }
   });
-  // moteur local : modèles
-  ipcMain.handle('local:status', () => ({ available: localWhisper.isAvailable(), models: localWhisper.modelsStatus(), selected: localModelId(), recommended: recommendedModelId(), running: localWhisper.ready ? localWhisper.modelId : null }));
-  ipcMain.handle('local:download', async (_e, id) => { await localWhisper.downloadModel(id); return localWhisper.modelsStatus(); });
-  ipcMain.handle('local:cancel', (_e, id) => { localWhisper.cancelDownload(id); });
-  ipcMain.handle('local:delete', (_e, id) => { localWhisper.deleteModel(id); return localWhisper.modelsStatus(); });
-  ipcMain.handle('local:select', (_e, id) => { store.saveSettings({ local: { modelId: id } }); localWhisper.stop(); return localModelId(); });
   ipcMain.on('audio:level', (_e, level) => { if (recording && level > peakLevel) peakLevel = level; if (barWin) barWin.webContents.send('level', level); });
   ipcMain.on('audio:device', (_e, label) => { if (label !== audioDevice) { audioDevice = label; console.log(`micro audio utilisé : ${label}`); setState(state); } });
   ipcMain.on('audio:error', (_e, msg) => { notice('error', `Micro : ${msg}`); if (recording) cancelRecording(); });
@@ -971,7 +923,6 @@ function setupLogging() {
 app.whenReady().then(() => {
   setupLogging();
   store = new Store();
-  setupLocalWhisper();
   setupHidPermissions();
   setupIpc();
   try { if (app.dock) app.dock.show(); } catch (e) { console.warn('dock', e.message); }
@@ -986,8 +937,6 @@ app.whenReady().then(() => {
   // vérification des autorisations macOS au démarrage ; demande seulement si quelque chose manque
   // séquence de premier démarrage : droits macOS, puis accès au trousseau (clé API) pour que rien ne surgisse à la première dictée
   setTimeout(async () => {
-    // le moteur local se charge en parallèle des demandes d'autorisation (elles peuvent attendre l'utilisateur)
-    if (store.currentProvider() === 'local') ensureLocalReady().then(() => setState('idle')).catch((e) => console.warn('moteur local', e.message));
     if (process.env.DICTOPEN_TEST_WAV) { setTimeout(() => runSelfTest(process.env.DICTOPEN_TEST_WAV), 12000); }
     // diagnostic clavier/presse-papiers : qui est au premier plan, Cmd+A puis Cmd+C, lecture par trois voies
     if (process.env.DICTOPEN_TEST_KEYS) {
@@ -1013,7 +962,7 @@ app.whenReady().then(() => {
     try {
       const key = await store.getApiKey();
       console.log(key ? 'clé API lue (trousseau accessible)' : 'aucune clé API enregistrée');
-      if (store.currentProvider() !== 'local' && key) ensureConnected().catch((e) => console.warn('préconnexion OpenAI', e.message));
+      if (key) ensureConnected().catch((e) => console.warn('préconnexion OpenAI', e.message));
     } catch (e) { console.warn('trousseau', e.message); }
   }, 1500);
 });
@@ -1032,8 +981,7 @@ async function runSelfTest(wavPath) {
     if (!recording) throw new Error('enregistrement non démarré');
     for (let off = 0; off < pcm.length; off += 4800) {
       const chunk = pcm.subarray(off, Math.min(off + 4800, pcm.length));
-      if (store.currentProvider() === 'local') { pcmChunks.push(Buffer.from(chunk)); audioBytes += chunk.length; }
-      else { rt.appendAudio(chunk); audioBytes += chunk.length; }
+      rt.appendAudio(chunk); audioBytes += chunk.length;
       peakLevel = 1;
     }
     await stopRecording();
@@ -1096,5 +1044,5 @@ async function runBatch(dir) {
 }
 
 app.on('window-all-closed', (e) => e.preventDefault());
-app.on('will-quit', () => { globalShortcut.unregisterAll(); rt.close(); if (localWhisper) localWhisper.stop(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); rt.close(); });
 app.on('activate', () => { if (!barWin) createBar(); else barWin.showInactive(); });

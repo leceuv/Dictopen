@@ -13,18 +13,6 @@ Chaque utilisateur utilise **sa propre clé API OpenAI** : aucun serveur interm�
 
 Chaque mode a son modèle de transcription et, pour le courrier, son modèle de rédaction.
 
-## Transcription locale (hors ligne)
-
-Depuis la 0.4, chaque mode peut utiliser au choix l'API OpenAI ou un **moteur local** (whisper.cpp intégré, accélération Metal sur Apple Silicon, BLAS sur Windows) : l'audio ne quitte pas l'ordinateur, aucun coût, fonctionne sans réseau. Le texte arrive après le relâchement (pas d'affichage en direct). Trois modèles au choix, téléchargés à la demande depuis les réglages :
-
-| Choix | Modèle | Taille | Pour |
-|---|---|---|---|
-| Léger | whisper small (q5) | ≈ 190 Mo | toute machine |
-| Recommandé | whisper large-v3-turbo (q5) | ≈ 575 Mo | Apple Silicon, PC récents |
-| Précis | whisper large-v3 (q5) | ≈ 1,1 Go | machines puissantes |
-
-Le contexte et les mots-clés sont transmis au moteur local comme à OpenAI. Le moteur n'est pas fourni pour les Mac Intel (OpenAI uniquement).
-
 ## Fonctions
 
 - Barre flottante toujours au premier plan, non focalisable (l'application cible garde le focus).
@@ -51,9 +39,7 @@ npm run icon-win          # Windows : icône .ico depuis icon-256.png
 npm run package-win       # Windows x64 → dist/
 ```
 
-Les binaires du moteur local sont dans `bin/<plateforme>-<architecture>/` (voir `docs/local.md` pour les reconstruire) et copiés comme ressources à l'empaquetage.
-
-Structure : `src/main.js` (processus principal : état, raccourcis, IPC, collage), `src/realtime.js` (WebSocket OpenAI Realtime, mode transcription, PCM 16 bits 24 kHz, commit manuel), `src/redaction.js` (mode Courrier, API Responses), `src/local-whisper.js` (moteur local : modèles, serveur whisper.cpp, transcription), `src/inject.js` (collage : AppleScript Cmd+V sur macOS, SendKeys Ctrl+V sur Windows, presse-papiers sauvegardé puis restauré), `src/store.js` (réglages, clé, consommation), `renderer/` (barre, réglages, capture audio AudioWorklet, SpeechMike WebHID).
+Structure : `src/main.js` (processus principal : état, raccourcis, IPC, collage), `src/realtime.js` (WebSocket OpenAI Realtime, mode transcription, PCM 16 bits 24 kHz, commit manuel), `src/redaction.js` (mode Courrier, API Responses), `src/inject.js` (collage : AppleScript Cmd+V sur macOS, SendKeys Ctrl+V sur Windows, presse-papiers sauvegardé puis restauré), `src/store.js` (réglages, clé, consommation), `renderer/` (barre, réglages, capture audio AudioWorklet, SpeechMike WebHID).
 
 ## Confidentialité
 

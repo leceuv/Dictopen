@@ -81,8 +81,6 @@
 
   <section>
     <h2>Mode Dictée directe</h2>
-    <div class="row"><label>Transcription</label>
-      <select id="d_provider"><option value="openai">OpenAI (nuage, texte en direct)</option><option value="local">Locale (sur cet ordinateur, gratuite, hors ligne)</option></select></div>
     <div class="row"><label>Modèle OpenAI</label>
       <select id="d_model">
         <option value="gpt-live-transcribe">gpt-live-transcribe (texte en direct, 0,017 $/min)</option>
@@ -90,7 +88,7 @@
         <option value="gpt-4o-transcribe">gpt-4o-transcribe (~0,006 $/min)</option>
         <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (~0,003 $/min)</option>
       </select></div>
-    <div class="row"><label>Réactivité (gpt-live-transcribe)</label>
+    <div class="row" id="d_delayRow"><label>Réactivité (gpt-live-transcribe)</label>
       <select id="d_delay"><option value="minimal">minimale</option><option value="low">basse</option><option value="medium">moyenne</option><option value="high">haute (plus précis)</option><option value="xhigh">très haute</option></select></div>
     <div class="row"><label>Bouton Record du SpeechMike</label>
       <select id="d_record"><option value="pressed">appuyer-parler (maintenu)</option><option value="toggle">marche / arrêt</option></select></div>
@@ -99,8 +97,6 @@
 
   <section>
     <h2>Mode Courrier</h2>
-    <div class="row"><label>Transcription</label>
-      <select id="c_provider"><option value="openai">OpenAI (nuage)</option><option value="local">Locale (sur cet ordinateur)</option></select></div>
     <div class="row"><label>Modèle OpenAI</label>
       <select id="c_model">
         <option value="gpt-transcribe">gpt-transcribe (0,0045 $/min, recommandé)</option>
@@ -108,7 +104,7 @@
         <option value="gpt-4o-transcribe">gpt-4o-transcribe (~0,006 $/min)</option>
         <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (~0,003 $/min)</option>
       </select></div>
-    <div class="row"><label>Réactivité (gpt-live-transcribe)</label>
+    <div class="row" id="c_delayRow"><label>Réactivité (gpt-live-transcribe)</label>
       <select id="c_delay"><option value="minimal">minimale</option><option value="low">basse</option><option value="medium">moyenne</option><option value="high">haute</option><option value="xhigh">très haute</option></select></div>
     <div class="row"><label>Bouton Record du SpeechMike</label>
       <select id="c_record"><option value="toggle">marche / arrêt</option><option value="pressed">appuyer-parler (maintenu)</option></select></div>
@@ -123,7 +119,7 @@
     <div class="row"><label>Effort de raisonnement (gpt-5)</label>
       <select id="c_effort"><option value="minimal">minimal (plus rapide)</option><option value="low">bas</option><option value="medium">moyen</option><option value="high">élevé (lent)</option></select></div>
     <div class="row"><label>Prompt maître</label><button class="secondary" id="c_promptDefault">Remettre le prompt par défaut</button></div>
-    <textarea id="c_prompt" class="big" placeholder="Vide = prompt générique (courrier médical). Collez ici votre propre prompt : spécialité, nom pour la signature, formules habituelles, vocabulaire, corrections de dictée fréquentes…"></textarea>
+    <textarea id="c_prompt" placeholder="Vide = prompt générique (courrier médical). Collez ici votre propre prompt : spécialité, nom pour la signature, formules habituelles, vocabulaire, corrections de dictée fréquentes…"></textarea>
     <p class="hint">La date du jour est ajoutée automatiquement. Après un courrier, une nouvelle dictée + « Rédiger » = correction du courrier précédent (repris en entier). « Nouveau » repart de zéro.</p>
   </section>
 
@@ -166,12 +162,6 @@
     <div class="row"><label>Extension « Dictopen pour Chrome »</label><input type="checkbox" id="k_localApi"><span class="hint">port local <input type="text" id="k_port" style="width:70px"> — l'extension (dossier <code>extension</code> du dépôt) lit le courrier dans la page web (Follow, Doctolib…), le fait corriger par Dictopen et le remplace variable par variable. Quand un navigateur est au premier plan, « Corriger » déclenche l'extension (raccourci Alt+Maj+C).</span></div>
   </section>
 
-  <section id="localSection">
-    <h2>Transcription locale</h2>
-    <p class="hint" id="localIntro">Moteur whisper.cpp intégré : l'audio ne quitte pas l'ordinateur, aucun coût. Le texte arrive après le relâchement (pas d'affichage en direct). Choisissez un modèle selon votre machine, puis sélectionnez « Locale » dans le mode voulu.</p>
-    <div id="localModels"></div>
-    <p class="hint" id="localRunning"></p>
-  </section>
 
   <section>
     <h2>Transcription (commun aux deux modes)</h2>

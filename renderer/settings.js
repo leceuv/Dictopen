@@ -81,24 +81,27 @@
   $('usageReset').addEventListener('click', async () => { if (confirm('Remettre le compteur à zéro ?')) renderUsage(await api.resetUsage()); });
 
   // --- dictée directe ---
-  $('d_provider').value = settings.direct.provider || 'openai';
   $('d_model').value = settings.direct.transcriptionModel;
   $('d_delay').value = settings.direct.delay;
+  const showDelay = (modelId, rowId) => { $(rowId).style.display = $(modelId).value === 'gpt-live-transcribe' ? '' : 'none'; };
+  showDelay('d_model', 'd_delayRow');
+  $('d_model').addEventListener('change', () => showDelay('d_model', 'd_delayRow'));
   $('d_punct').checked = !!settings.direct.localPunctuation;
   $('d_record').value = settings.direct.recordButtonMode || 'pressed';
-  const saveDirect = () => save({ direct: { provider: $('d_provider').value, transcriptionModel: $('d_model').value, delay: $('d_delay').value, localPunctuation: $('d_punct').checked, recordButtonMode: $('d_record').value } });
-  for (const id of ['d_provider', 'd_model', 'd_delay', 'd_punct', 'd_record']) $(id).addEventListener('change', saveDirect);
+  const saveDirect = () => save({ direct: { transcriptionModel: $('d_model').value, delay: $('d_delay').value, localPunctuation: $('d_punct').checked, recordButtonMode: $('d_record').value } });
+  for (const id of ['d_model', 'd_delay', 'd_punct', 'd_record']) $(id).addEventListener('change', saveDirect);
 
   // --- courrier ---
-  $('c_provider').value = settings.courrier.provider || 'openai';
   $('c_model').value = settings.courrier.transcriptionModel;
   $('c_delay').value = settings.courrier.delay;
+  showDelay('c_model', 'c_delayRow');
+  $('c_model').addEventListener('change', () => showDelay('c_model', 'c_delayRow'));
   $('c_draft').value = settings.courrier.draftModel;
   $('c_effort').value = settings.courrier.reasoningEffort || 'low';
   $('c_prompt').value = settings.courrier.masterPrompt || '';
   $('c_record').value = settings.courrier.recordButtonMode || 'toggle';
-  const saveCourrier = () => save({ courrier: { provider: $('c_provider').value, transcriptionModel: $('c_model').value, delay: $('c_delay').value, draftModel: $('c_draft').value, reasoningEffort: $('c_effort').value, masterPrompt: $('c_prompt').value, recordButtonMode: $('c_record').value } });
-  for (const id of ['c_provider', 'c_model', 'c_delay', 'c_draft', 'c_effort', 'c_prompt', 'c_record']) $(id).addEventListener('change', saveCourrier);
+  const saveCourrier = () => save({ courrier: { transcriptionModel: $('c_model').value, delay: $('c_delay').value, draftModel: $('c_draft').value, reasoningEffort: $('c_effort').value, masterPrompt: $('c_prompt').value, recordButtonMode: $('c_record').value } });
+  for (const id of ['c_model', 'c_delay', 'c_draft', 'c_effort', 'c_prompt', 'c_record']) $(id).addEventListener('change', saveCourrier);
   $('c_promptDefault').addEventListener('click', async () => {
     if (!confirm('Effacer votre prompt et revenir au prompt par défaut ?')) return;
     $('c_prompt').value = '';
@@ -132,47 +135,6 @@
   });
   $('akeyTest').addEventListener('click', async () => { $('akeyResult').textContent = 'Test en cours…'; const r = await api.testApiKey('anthropic'); $('akeyResult').textContent = r.message; $('akeyResult').className = 'hint k-anthropic ' + (r.ok ? 'ok' : 'ko'); });
   $('ccTest').addEventListener('click', async () => { $('ccResult').textContent = '…'; const r = await api.testApiKey('claude-code'); $('ccResult').textContent = r.message; $('ccResult').className = 'hint ' + (r.ok ? 'ok' : 'ko'); });
-
-  // --- transcription locale ---
-  const fmtMo = (b) => `${Math.round(b / 1024 / 1024)} Mo`;
-  async function renderLocal(status) {
-    const st = status || await api.localStatus();
-    const box = $('localModels');
-    if (!st.available) {
-      box.innerHTML = '';
-      $('localIntro').textContent = 'Moteur local non disponible pour cette plateforme (Mac Intel). Utilisez OpenAI.';
-      $('localRunning').textContent = '';
-      return;
-    }
-    box.innerHTML = st.models.map((m) => {
-      const sel = m.id === st.selected;
-      let action;
-      if (m.downloading) action = `<progress value="${m.downloading.received}" max="${m.downloading.total || 1}"></progress><button class="secondary" data-cancel="${m.id}">Annuler</button>`;
-      else if (m.installed) action = `${sel ? '<span class="hint">sélectionné</span>' : `<button data-select="${m.id}">Utiliser</button>`}<button class="secondary" data-delete="${m.id}" title="Supprimer le fichier du modèle">Supprimer</button>`;
-      else action = `<button data-download="${m.id}">Télécharger (${fmtMo(m.size)})</button>`;
-      return `<div class="model ${sel ? 'selected' : ''}"><div class="txt"><b>${m.label}${m.recommended ? '<span class="tag">recommandé pour cette machine</span>' : ''}</b><span class="hint">${m.description}</span></div>${action}</div>`;
-    }).join('');
-    $('localRunning').textContent = st.running ? `Moteur chargé en mémoire : ${st.models.find((m) => m.id === st.running)?.label || st.running}.` : 'Le moteur se charge à la première dictée locale (quelques secondes), puis reste prêt.';
-  }
-  $('localModels').addEventListener('click', async (e) => {
-    const b = e.target.closest('button[data-download],button[data-cancel],button[data-delete],button[data-select]');
-    if (!b) return;
-    try {
-      if (b.dataset.download) { renderLocal({ ...(await api.localStatus()), models: (await api.localStatus()).models.map((m) => (m.id === b.dataset.download ? { ...m, downloading: { received: 0, total: m.size } } : m)) }); await api.localDownload(b.dataset.download); await api.localSelect(b.dataset.download); }
-      else if (b.dataset.cancel) await api.localCancel(b.dataset.cancel);
-      else if (b.dataset.delete) { if (confirm('Supprimer ce modèle du disque ?')) await api.localDelete(b.dataset.delete); }
-      else if (b.dataset.select) await api.localSelect(b.dataset.select);
-    } catch (err) {
-      alert('Transcription locale : ' + (err.message || err));
-    }
-    renderLocal();
-  });
-  api.onLocalDownload((p) => {
-    const bar = document.querySelector(`.model progress`);
-    if (p.done) { renderLocal(); return; }
-    if (bar) { bar.value = p.received; bar.max = p.total || 1; }
-  });
-  renderLocal();
 
   // --- transcription commune ---
   const t = settings.transcription;

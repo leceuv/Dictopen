@@ -51,7 +51,6 @@ La barre flottante reste au-dessus des autres fenêtres (déplaçable, masquable
 
 - **Prompt maître** (mode Courrier) : décrivez votre spécialité, votre nom pour la signature, vos formules et vos corrections de dictée fréquentes. C'est ce qui fait la qualité du courrier.
 - **Mots-clés** : termes techniques, médicaments, noms de confrères, un par ligne. Et le **contexte** : deux ou trois phrases telles que vous les dictez réellement. Tout mot prononcé comme un mot-clé est automatiquement remplacé par ce mot-clé (correction phonétique) : il suffit donc d'ajouter le bon terme aux mots-clés. Pour un cas particulier, la table de **corrections** « entendu => voulu » force un remplacement.
-- **Transcription locale** : dans Réglages → Transcription locale, téléchargez un modèle (Léger / Recommandé / Précis, selon votre machine), puis choisissez « Locale » dans le mode voulu. L'audio ne quitte pas l'ordinateur et la dictée ne coûte rien ; le texte arrive après le relâchement du bouton. Le mode Courrier reste possible avec transcription locale, mais la rédaction du courrier passe toujours par OpenAI.
 - **Modèles** : par mode, choisissez la transcription (`gpt-live-transcribe` avec texte en direct, ou `gpt-transcribe` 4× moins cher) et, pour le courrier, le modèle de rédaction (`gpt-5` qualité, `gpt-5-mini` économique).
 - **Boutons du SpeechMike** et **raccourcis clavier** : cliquez dans un champ et appuyez sur la touche voulue.
 - **Consommation** : coût estimé depuis la dernière remise à zéro.

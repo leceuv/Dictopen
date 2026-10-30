@@ -24,8 +24,8 @@
   window.dictee.onState(({ state, detail, recording, mode, provider, hasDraft, hasLetter, mic, audioDevice, hotkey }) => {
     currentMode = mode;
     document.body.classList.toggle('courrier', mode === 'courrier');
-    $('mode').textContent = (mode === 'courrier' ? 'Courrier' : 'Dictée directe') + (provider === 'local' ? ' · local' : '');
-    $('mode').title = (provider === 'local' ? 'Transcription locale (sur cet ordinateur). ' : 'Transcription OpenAI. ') + 'Cliquer pour changer de mode (Ctrl+Alt+M).';
+    $('mode').textContent = (mode === 'courrier' ? 'Courrier' : 'Dictée directe') + '';
+    $('mode').title = 'Cliquer pour changer de mode (Ctrl+Alt+M).';
     $('mode').classList.toggle('courrier', mode === 'courrier');
     $('dot').className = 'dot ' + state;
     const draftInfo = mode === 'courrier' && hasDraft && document.body.classList.contains('compact') ? ` · brouillon ${draft.text.split('\n').filter(Boolean).length} énoncé(s)` : '';
@@ -102,6 +102,7 @@
   $('mode').addEventListener('click', () => window.dictee.toggleMode());
   $('btnSettings').addEventListener('click', () => window.dictee.openSettings());
   $('btnHide').addEventListener('click', () => window.dictee.hideBar());
+  $('btnQuit').addEventListener('click', () => window.dictee.quit());
 
   window.dictee.getUsage().then((u) => { if (u) $('cost').textContent = u.usd.toFixed(2).replace('.', ',') + ' $'; });
   window.dictee.getDraft().then((d) => { if (d) { draft = d; renderText(); } });

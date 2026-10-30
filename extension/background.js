@@ -242,9 +242,14 @@ function remplacerVariables(ops, vides, blocs = [], paragraphes = []) {
       if (!bloc) continue;
       if (!p.texte.trim()) { editor.removeNodeByKey(p.cle); continue; }
       const first = bloc.getFirstText(), last = bloc.getLastText();
+      // mise en forme (police, taille…) du premier texte non vide du paragraphe, réappliquée au texte inséré :
+      // sinon Slate insère avec les marques par défaut et la taille de police change
+      const modele = bloc.getTexts().find(t => t.text.length) || first;
+      let marks = null;
+      try { marks = modele.getMarksAtIndex ? modele.getMarksAtIndex(1) : (modele.getActiveMarks ? modele.getActiveMarks() : null); } catch {}
       editor.select({ anchor: { key: first.key, offset: 0 }, focus: { key: last.key, offset: last.text.length } });
       editor.delete();
-      p.texte.split(/\r?\n/).forEach((ligne, i) => { if (i) editor.splitBlock(); if (ligne) editor.insertText(ligne); });
+      p.texte.split(/\r?\n/).forEach((ligne, i) => { if (i) editor.splitBlock(); if (ligne) { if (marks && marks.size) editor.insertText(ligne, marks); else editor.insertText(ligne); } });
     }
     for (const o of ops) {
       const doc = editor.value.document;
