@@ -259,11 +259,8 @@
   }
 
   // --- collage ---
-  $('i_delay').value = settings.injection.afterPasteDelayMs;
   $('i_autoSpace').checked = !!settings.injection.autoSpace;
-  const saveInjection = () => save({ injection: { afterPasteDelayMs: Math.max(0, parseInt($('i_delay').value, 10) || 0), autoSpace: $('i_autoSpace').checked } });
-  $('i_delay').addEventListener('change', saveInjection);
-  $('i_autoSpace').addEventListener('change', saveInjection);
+  $('i_autoSpace').addEventListener('change', () => save({ injection: { autoSpace: $('i_autoSpace').checked } }));
 
   $('launchAtLogin').checked = settings.launchAtLogin !== false;
   $('launchAtLogin').addEventListener('change', () => save({ launchAtLogin: $('launchAtLogin').checked }));

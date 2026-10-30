@@ -93,6 +93,7 @@
     <div class="row"><label>Bouton Record du SpeechMike</label>
       <select id="d_record"><option value="pressed">appuyer-parler (maintenu)</option><option value="toggle">marche / arrêt</option></select></div>
     <div class="row"><label>Ponctuation dictée locale</label><input type="checkbox" id="d_punct"><span class="hint">« virgule », « point à la ligne », « nouveau paragraphe »… convertis en signes</span></div>
+    <div class="row"><label>Espace automatique entre deux énoncés</label><input type="checkbox" id="i_autoSpace"></div>
   </section>
 
   <section>
@@ -201,13 +202,6 @@
     <div class="row"><label>Copier le dernier texte</label><input type="text" id="h_copyLastText" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="copyLastText">Effacer</button></div>
     <div class="row"><label>Corriger la sélection</label><input type="text" id="h_correctSelection" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="correctSelection">Effacer</button></div>
     <p class="hint">Cliquez dans le champ puis appuyez sur la combinaison voulue (avec ⌃ ⌥ ⇧ ⌘ si besoin). La touche est enregistrée par sa position physique, telle qu'elle apparaît sur votre clavier. « Effacer » désactive le raccourci.</p>
-  </section>
-
-  <section>
-    <h2>Collage</h2>
-    <div class="row"><label>Délai avant restauration du presse-papiers (ms)</label><input type="text" id="i_delay"></div>
-    <div class="row"><label>Espace automatique entre deux énoncés (dictée directe)</label><input type="checkbox" id="i_autoSpace"></div>
-    <p class="hint">Autorisations macOS nécessaires : Micro, Accessibilité et Automatisation (System Events).</p>
   </section>
 
   <section>
