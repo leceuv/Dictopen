@@ -16,6 +16,11 @@ const DEFAULT_PORT = 47395;
 function allowedOrigin(origin) {
   return /^(chrome|moz|safari-web)-extension:\/\//.test(origin || '');
 }
+// Chrome n'envoie pas d'en-tête Origin sur les GET d'un service worker d'extension : sans Origin, le jeton seul tranche ;
+// avec un Origin, il doit être celui d'une extension (une page web est refusée, même avec le jeton).
+function originAcceptable(origin) {
+  return !origin || allowedOrigin(origin);
+}
 
 class LocalApi {
   constructor({ version, token, onCorrect, log }) {
@@ -66,7 +71,7 @@ class LocalApi {
     this.wss = new WebSocketServer({
       server: this.server,
       verifyClient: ({ origin, req }) => {
-        if (!allowedOrigin(origin)) return false;
+        if (!originAcceptable(origin)) return false;
         let given = '';
         try { given = new URL(req.url, 'http://127.0.0.1').searchParams.get('token') || ''; } catch {}
         if (!this.tokenOk(given)) { this.log('api locale : connexion WebSocket refusée (jeton absent ou invalide)'); return false; }
@@ -105,7 +110,7 @@ class LocalApi {
   async handle(req, res) {
     const origin = req.headers.origin || '';
     if (req.method === 'OPTIONS') { this.reply(req, res, allowedOrigin(origin) ? 204 : 403, {}); return; }
-    if (!allowedOrigin(origin)) { this.reply(req, res, 403, { ok: false, error: 'origine refusée' }); return; }
+    if (!originAcceptable(origin)) { this.log(`api locale : origine refusée « ${String(origin).slice(0, 80)} » (${req.method} ${req.url.slice(0, 40)})`); this.reply(req, res, 403, { ok: false, error: 'origine refusée' }); return; }
     if (!this.tokenOk(req.headers['x-dictopen-token'])) {
       // code 'token' : l'extension affiche la marche à suivre (copier le jeton depuis les réglages de Dictopen)
       this.reply(req, res, 401, { ok: false, error: 'jeton absent ou invalide', code: 'token' });
