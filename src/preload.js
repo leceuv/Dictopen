@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('dictee', {
   setMode: (mode) => ipcRenderer.invoke('mode:set', mode),
   toggleMode: () => ipcRenderer.invoke('mode:toggle'),
   getApiKeyMasked: (provider) => ipcRenderer.invoke('apikey:masked', provider),
+  revealApiKey: (provider) => ipcRenderer.invoke('apikey:reveal', provider),
   setApiKey: (key, provider) => ipcRenderer.invoke('apikey:set', key, provider),
   testApiKey: (provider) => ipcRenderer.invoke('apikey:test', provider),
   readClipboardText: () => ipcRenderer.invoke('clipboard:readText'),

@@ -874,6 +874,14 @@ function setupIpc() {
   ipcMain.handle('mode:set', (_e, mode) => { setMode(mode); return store.settings.mode; });
   ipcMain.handle('mode:toggle', () => { toggleMode(); return store.settings.mode; });
   ipcMain.handle('apikey:masked', (_e, provider) => store.maskedApiKey(provider || 'openai'));
+  // clé en clair sur demande explicite (confirmation système), pour la reporter sur un autre poste ; jamais journalisée
+  ipcMain.handle('apikey:reveal', async (_e, provider) => {
+    const { response } = await dialog.showMessageBox(settingsWin || undefined, { type: 'warning', buttons: ['Afficher', 'Annuler'], defaultId: 1, cancelId: 1, message: 'Afficher la clé API en clair ?', detail: 'Elle sera visible 15 secondes dans les réglages et copiée dans le presse-papiers. Ne la partagez pas.' });
+    if (response !== 0) return '';
+    const k = await store.getApiKey(provider || 'openai');
+    if (k) clipboard.writeText(k);
+    return k || '';
+  });
   ipcMain.handle('clipboard:readText', () => clipboard.readText());
   ipcMain.handle('apikey:set', async (_e, key, provider) => { await store.setApiKey(key, provider || 'openai'); if (!provider || provider === 'openai') rt.close(); return store.maskedApiKey(provider || 'openai'); });
   ipcMain.handle('apikey:test', async (_e, provider) => {

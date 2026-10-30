@@ -44,6 +44,15 @@
 
   // --- clé ---
   for (const [id, link] of [['linkOpenaiKeys', 'openaiKeys'], ['linkOpenaiBilling', 'openaiBilling'], ['linkAnthropicKeys', 'anthropicKeys']]) $(id).addEventListener('click', () => api.openLink(link));
+  const revealInto = async (provider, el, refresh) => {
+    const k = await api.revealApiKey(provider);
+    if (!k) return;
+    el.textContent = k + '  (copiée)';
+    el.style.userSelect = 'text';
+    setTimeout(() => { el.style.userSelect = ''; refresh(); }, 15000);
+  };
+  $('keyReveal').addEventListener('click', () => revealInto('openai', $('keyMasked'), refreshKey));
+  $('akeyReveal').addEventListener('click', () => revealInto('anthropic', $('akeyMasked'), refreshAKey));
   async function refreshKey() {
     const m = await api.getApiKeyMasked();
     $('keyMasked').textContent = m || 'aucune';
