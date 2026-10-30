@@ -666,7 +666,9 @@ const EXTENSION_DIR = () => path.join(app.getPath('userData'), 'Dictopen pour Ch
 function writeExtensionConfig(dest) {
   const fs = require('fs');
   const token = store.localApiToken();
-  fs.writeFileSync(path.join(dest, 'config.js'), `// Généré par Dictopen : jeton de l'API locale (ne pas partager)\nself.DICTOPEN_TOKEN = ${JSON.stringify(token)};\n`, { mode: 0o600 });
+  const file = path.join(dest, 'config.js');
+  fs.writeFileSync(file, `// Généré par Dictopen : jeton de l'API locale (ne pas partager)\nself.DICTOPEN_TOKEN = ${JSON.stringify(token)};\n`, { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch {} // « mode » ne s'applique qu'à la création : on l'impose aussi à la réécriture
 }
 
 async function replaceWithReview(text) {

@@ -149,7 +149,12 @@
   };
   renderExt();
   api.onSettingsChanged((s) => { settings = s; renderExt(); });
-  const saveCorrection = () => { showProvider(); $('k_directSendWarn').style.display = $('k_directSend').checked ? '' : 'none'; return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value, paragraphes: $('k_paragraphes').value, showSent: $('k_showSent').checked, directSend: $('k_directSend').checked } }); };
+  const saveCorrection = () => {
+    showProvider();
+    // activation de l'envoi sans vérification : confirmation explicite, comme depuis le panneau de l'extension
+    if ($('k_directSend').checked && !settings.correction.directSend && !confirm('Envoyer sans vérification un texte que vous n’aurez pas vu ? Le masquage des identifiants peut laisser passer un nom de patient : vous en assumez la responsabilité.')) $('k_directSend').checked = false;
+    $('k_directSendWarn').style.display = $('k_directSend').checked ? '' : 'none';
+    return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value, paragraphes: $('k_paragraphes').value, showSent: $('k_showSent').checked, directSend: $('k_directSend').checked } }); };
   for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions', 'k_paragraphes', 'k_showSent', 'k_directSend']) $(id).addEventListener('change', saveCorrection);
   // clé Anthropic
   const refreshAKey = async () => { $('akeyMasked').textContent = (await api.getApiKeyMasked('anthropic')) || 'aucune'; };
