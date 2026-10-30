@@ -84,9 +84,19 @@ async function connecter() {
   try {
     ws = new WebSocket(`ws://127.0.0.1:${port || DEFAUTS.port}/?token=${encodeURIComponent(cle)}`);
   } catch { ws = null; connexionEnCours = false; return; }
-  ws.onopen = () => { connexionEnCours = false; journal("extension prête, version " + chrome.runtime.getManifest().version); };
+  // Identité du serveur : défi dès l'ouverture ; tant que la preuve HMAC n'est pas arrivée, aucun message (réglages,
+  // ordre « correct ») n'est pris en compte. Un autre programme qui occuperait le port ne peut ni régler ni déclencher.
+  let verifie = false;
+  const nonce = hex(crypto.getRandomValues(new Uint8Array(16)));
+  ws.onopen = () => { connexionEnCours = false; ws.send(JSON.stringify({ type: "challenge", nonce })); journal("extension prête, version " + chrome.runtime.getManifest().version); };
   ws.onmessage = async e => {
     let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === "proof") {
+      if (msg.nonce === nonce && typeof msg.proof === "string" && msg.proof === await hmac(cle, nonce)) { verifie = true; journal("liaison vérifiée (preuve du jeton)"); }
+      else { journal("liaison : preuve du jeton invalide, connexion fermée"); try { ws.close(); } catch {} }
+      return;
+    }
+    if (!verifie) return;
     if (msg.type === "settings") {
       // réglages tenus dans Dictopen (Réglages → Corriger la sélection)
       const st = {};

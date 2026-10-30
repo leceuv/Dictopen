@@ -59,6 +59,20 @@ class LocalApi {
     return crypto.createHmac('sha256', this.token).update(nonce).digest('hex');
   }
 
+  // Trace d'un refus d'origine : chemin seul (jamais la chaîne de requête, qui pourrait porter un jeton), et au plus
+  // une ligne par origine et par minute (une page web en boucle ne doit pas gonfler le journal).
+  logRefus(origin, req) {
+    const key = String(origin || '').slice(0, 80);
+    const now = Date.now();
+    this.refus = this.refus || new Map();
+    if (now - (this.refus.get(key) || 0) < 60000) return;
+    if (this.refus.size > 50) this.refus.clear();
+    this.refus.set(key, now);
+    let pathname = '?';
+    try { pathname = new URL(req.url, 'http://127.0.0.1').pathname.slice(0, 40); } catch {}
+    this.log(`api locale : origine refusée « ${key} » (${req.method} ${pathname})`);
+  }
+
   start(port = DEFAULT_PORT, token) {
     this.stop();
     if (token) this.token = token;
@@ -82,12 +96,17 @@ class LocalApi {
     });
     this.wss.on('connection', (ws) => {
       this.log(`api locale : extension connectée (${this.clients})`);
-      try { const st = this.onConnect(); if (st) ws.send(JSON.stringify({ type: 'settings', ...st })); } catch {}
       ws.on('close', () => this.log(`api locale : extension déconnectée (${this.clients})`));
       ws.on('message', (data) => {
         try {
           const m = JSON.parse(data.toString());
-          if (m.type === 'log') this.log(`extension : ${String(m.text).slice(0, 500)}`);
+          if (m.type === 'challenge') {
+            // l'extension vérifie l'identité du serveur avant d'accepter le moindre message (réglages, ordre « correct ») ;
+            // les réglages lui sont envoyés une fois la preuve fournie
+            if (typeof m.nonce !== 'string' || !/^[0-9a-f]{16,128}$/.test(m.nonce)) return;
+            ws.send(JSON.stringify({ type: 'proof', nonce: m.nonce, proof: this.proof(m.nonce) }));
+            try { const st = this.onConnect(); if (st) ws.send(JSON.stringify({ type: 'settings', ...st })); } catch {}
+          } else if (m.type === 'log') this.log(`extension : ${String(m.text).slice(0, 500)}`);
           else if (m.type === 'setting' && m.settings && typeof m.settings === 'object') this.onSetting(m.settings);
         } catch {}
       });
@@ -119,7 +138,7 @@ class LocalApi {
   async handle(req, res) {
     const origin = req.headers.origin || '';
     if (req.method === 'OPTIONS') { this.reply(req, res, allowedOrigin(origin) ? 204 : 403, {}); return; }
-    if (!originAcceptable(origin)) { this.log(`api locale : origine refusée « ${String(origin).slice(0, 80)} » (${req.method} ${req.url.slice(0, 40)})`); this.reply(req, res, 403, { ok: false, error: 'origine refusée' }); return; }
+    if (!originAcceptable(origin)) { this.logRefus(origin, req); this.reply(req, res, 403, { ok: false, error: 'origine refusée' }); return; }
     if (!this.tokenOk(req.headers['x-dictopen-token'])) {
       // code 'token' : l'extension affiche la marche à suivre (copier le jeton depuis les réglages de Dictopen)
       this.reply(req, res, 401, { ok: false, error: 'jeton absent ou invalide', code: 'token' });
