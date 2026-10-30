@@ -71,7 +71,7 @@
     <h2>Clé API OpenAI</h2>
     <div class="row"><label>Clé enregistrée</label><span id="keyMasked" class="hint">aucune</span></div>
     <div class="row"><label>Nouvelle clé</label><input type="password" id="keyInput" placeholder="sk-…" autocomplete="off"><button class="secondary" id="keyPaste" title="Coller la clé depuis le presse-papiers">Coller</button><button id="keySave">Enregistrer</button><button class="secondary" id="keyTest">Tester</button></div>
-    <p class="hint" id="keyResult">La clé est chiffrée dans le trousseau macOS (jamais dans le Drive).</p>
+    <p class="hint" id="keyResult"></p>
   </section>
 
   <section class="usage">
@@ -126,7 +126,7 @@
       </select></div>
     <div class="row k-anthropic"><label>Clé Anthropic enregistrée</label><span id="akeyMasked" class="hint">aucune</span></div>
     <div class="row k-anthropic"><label>Nouvelle clé Anthropic</label><input type="password" id="akeyInput" placeholder="sk-ant-…" autocomplete="off"><button class="secondary" id="akeyPaste">Coller</button><button id="akeySave">Enregistrer</button><button class="secondary" id="akeyTest">Tester</button></div>
-    <p class="hint k-anthropic" id="akeyResult">Clé créée sur console.anthropic.com ; chiffrée dans le trousseau comme la clé OpenAI.</p>
+    <p class="hint k-anthropic" id="akeyResult">Clé créée sur console.anthropic.com.</p>
     <div class="row k-claude-code"><label>Modèle Claude Code</label>
       <select id="k_claudeCodeModel"><option value="sonnet">Sonnet (recommandé)</option><option value="haiku">Haiku (rapide)</option><option value="opus">Opus (le plus soigné, lent)</option></select>
       <button class="secondary" id="ccTest">Vérifier l'installation</button><span class="hint" id="ccResult"></span></div>

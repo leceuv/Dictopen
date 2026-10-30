@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dictopen pour Chrome",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Relit et corrige le courrier affiché dans la page (Follow, Doctolib, tout éditeur web) avec Dictopen, puis le remplace. Le texte ne part que vers le modèle réglé dans Dictopen (OpenAI ou Anthropic), avec votre clé, identifiants reconnus masqués.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArzteAQdZ8CYhpecOq2Er3978dByLWPssiUcsIGk77BrqS9vD0t02yBRQUZxHnDd9Agfpl3cvO9Vhm5aFFvmCGdg3zh0HzZWkabxBWb2yxl/qcB4p7dCD/lwBkFTpPX54l97NGcfSuuf1yyRRMiwsHetPMLye7R8GJKmEe0j21D0QGq2wTApOShs75Ev7JSuBkR9y3QhmvSDx1z08zhmxL0IoiYIL7FURd7oHlaAaBi/XLvvZDQTWQ4DSMEz0A9FGGhZ5Lsee8iR8PzePhz9/cHiQOg+oPagN1iefSPwl71u9OdU8uRKekh1vRWug6j6gQDpwhry99t5xECBTUo2BeQIDAQAB",
   "permissions": ["alarms", "contextMenus", "scripting", "storage", "webNavigation"],

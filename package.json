@@ -1,7 +1,7 @@
 {
   "name": "dictopen",
   "productName": "Dictopen",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Dictopen — dictée médicale : transcription vocale par l'API OpenAI, collage dans l'application active, SpeechMike, mode Courrier",
   "main": "src/main.js",
   "private": true,

@@ -23,6 +23,8 @@ if (!app.requestSingleInstanceLock()) {
 
 let store;
 let barWin = null;
+// Windows : icône des fenêtres et de la barre des tâches (sinon vide) ; macOS prend l'icône du bundle
+const WINDOW_ICON = process.platform === 'win32' ? path.join(__dirname, '..', 'icon.ico') : undefined;
 let settingsWin = null;
 let reviewWin = null;
 let tray = null;
@@ -189,6 +191,7 @@ function createBar() {
   const { x, y } = store.settings.bar;
   const display = screen.getPrimaryDisplay().workArea;
   barWin = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: barSize()[0],
     height: barSize()[1],
     x: Number.isFinite(x) ? x : display.x + display.width - 480,
@@ -227,6 +230,7 @@ function createBar() {
 function openSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
   settingsWin = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: 780,
     height: 860,
     title: 'Réglages — Dictopen',
@@ -528,6 +532,7 @@ let reviewTrailing = ''; // blancs de fin de la sélection, conservés au rempla
 function openReviewWindow() {
   if (reviewWin && !reviewWin.isDestroyed()) { reviewWin.show(); reviewWin.focus(); return reviewWin; }
   reviewWin = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: 640, height: 480, minWidth: 420, minHeight: 300,
     title: 'Correction — Dictopen',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1f22' : '#ffffff',
@@ -772,6 +777,7 @@ let permsWin = null;
 function openPermissionsWindow() {
   if (permsWin && !permsWin.isDestroyed()) { permsWin.show(); permsWin.focus(); return; }
   permsWin = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: 520, height: 330, resizable: false, minimizable: false, maximizable: false, alwaysOnTop: true,
     title: 'Autorisations — Dictopen', backgroundColor: '#f4f4f6', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },

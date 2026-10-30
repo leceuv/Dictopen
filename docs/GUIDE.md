@@ -6,13 +6,13 @@ Chaque utilisateur utilise **sa propre clé API OpenAI** : la dictée est factur
 
 ## 1. Installer
 
-1. Choisissez le fichier selon votre Mac : **Dictopen-0.5.1-AppleSilicon.zip** (puce M1/M2/M3/M4) ou **Dictopen-0.5.1-Intel.zip** (menu  → À propos de ce Mac).
+1. Choisissez le fichier selon votre Mac : **Dictopen-0.5.2-AppleSilicon.zip** (puce M1/M2/M3/M4) ou **Dictopen-0.5.2-Intel.zip** (menu  → À propos de ce Mac).
 2. Double-cliquez sur le zip, puis glissez **Dictopen** dans le dossier **Applications**.
 3. **Première ouverture** : l'application n'est pas signée par Apple. Faites un **clic droit (ou Ctrl+clic) sur l'app → Ouvrir → Ouvrir**. Si macOS la bloque quand même : Réglages Système → Confidentialité et sécurité → en bas, bouton « Ouvrir quand même ».
 
 ### Sur Windows
 
-1. Décompressez **Dictopen-0.5.1-Windows.zip** où vous voulez (par exemple `C:\Program Files\Dictopen` ou votre dossier Documents), puis créez un raccourci de **Dictopen.exe** sur le Bureau ou dans la barre des tâches.
+1. Décompressez **Dictopen-0.5.2-Windows.zip** où vous voulez (par exemple `C:\Program Files\Dictopen` ou votre dossier Documents), puis créez un raccourci de **Dictopen.exe** sur le Bureau ou dans la barre des tâches.
 2. **Première ouverture** : Windows SmartScreen affiche « Windows a protégé votre ordinateur » (l'application n'est pas signée). Cliquez sur **Informations complémentaires** → **Exécuter quand même**. Cela n'arrive qu'une fois.
 3. Aucune autorisation « Accessibilité » n'est nécessaire sous Windows : le collage utilise l'envoi de touches standard. Autorisez le micro si Windows le demande (Paramètres → Confidentialité → Microphone → applications de bureau).
 4. Si vous avez un SpeechMike : fermez Dragon, SpeechControl ou tout autre logiciel de dictée avant de lancer l'app (un seul programme peut tenir les boutons).
@@ -63,4 +63,4 @@ La barre flottante reste au-dessus des autres fenêtres (déplaçable, masquable
 - Le texte n'est pas collé mais copié : vérifiez Accessibilité et Automatisation (§2) ; si l'app a été mise à jour, désactivez puis réactivez-la dans Accessibilité.
 - Journal technique (sans le texte dicté) : `~/Library/Logs/Dictopen/` sur Mac, `%APPDATA%\Dictopen\logs` sur Windows.
 
-Version 0.5.1 — octobre 2026. Mac : Apple Silicon et Intel ; Windows 10/11 64 bits.
+Version 0.5.2 — octobre 2026. Mac : Apple Silicon et Intel ; Windows 10/11 64 bits.
