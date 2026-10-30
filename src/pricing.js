@@ -16,6 +16,11 @@ const TEXT_PER_MILLION_USD = {
   'gpt-5-mini': { input: 0.25, output: 2.0 },
   'gpt-5-nano': { input: 0.05, output: 0.4 },
   'gpt-5': { input: 1.25, output: 10.0 },
+  // Anthropic (estimation, à vérifier sur anthropic.com/pricing)
+  'claude-sonnet-5-5': { input: 3.0, output: 15.0 },
+  'claude-opus-5-5': { input: 5.0, output: 25.0 },
+  'claude-haiku-4-5-20251001': { input: 1.0, output: 5.0 },
+  'claude-code': { input: 0, output: 0 },
 };
 
 function audioCost(model, seconds) {

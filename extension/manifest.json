@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Dictopen pour Chrome",
+  "version": "0.5.0",
+  "description": "Relit et corrige le courrier affiché dans la page (Follow, Doctolib, tout éditeur web) avec Dictopen, puis le remplace. Rien ne part ailleurs que chez OpenAI via votre clé Dictopen.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArzteAQdZ8CYhpecOq2Er3978dByLWPssiUcsIGk77BrqS9vD0t02yBRQUZxHnDd9Agfpl3cvO9Vhm5aFFvmCGdg3zh0HzZWkabxBWb2yxl/qcB4p7dCD/lwBkFTpPX54l97NGcfSuuf1yyRRMiwsHetPMLye7R8GJKmEe0j21D0QGq2wTApOShs75Ev7JSuBkR9y3QhmvSDx1z08zhmxL0IoiYIL7FURd7oHlaAaBi/XLvvZDQTWQ4DSMEz0A9FGGhZ5Lsee8iR8PzePhz9/cHiQOg+oPagN1iefSPwl71u9OdU8uRKekh1vRWug6j6gQDpwhry99t5xECBTUo2BeQIDAQAB",
+  "permissions": ["alarms", "contextMenus", "scripting", "storage", "webNavigation"],
+  "host_permissions": ["<all_urls>", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["content.js"], "all_frames": true, "run_at": "document_idle" }
+  ],
+  "icons": { "128": "icon128.png" },
+  "action": { "default_title": "Corriger le courrier avec Dictopen (Alt+Maj+C)", "default_icon": "icon128.png" },
+  "commands": {
+    "corriger": {
+      "suggested_key": { "default": "Alt+Shift+C" },
+      "description": "Corriger la sélection, ou le courrier reconnu dans la page"
+    }
+  },
+  "options_page": "options.html"
+}

@@ -1,11 +1,12 @@
 'use strict';
 const path = require('path');
-const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, dialog, shell, systemPreferences, clipboard, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, dialog, shell, systemPreferences, clipboard, screen, nativeTheme } = require('electron');
 const { Store } = require('./store');
 const { RealtimeTranscriber } = require('./realtime');
-const { writeLetter } = require('./redaction');
+const { writeLetter, correctText, findClaudeCode } = require('./redaction');
+const { LocalApi } = require('./local-api');
 const { applyLocalPunctuation } = require('./punctuation');
-const { pasteIntoActiveApp, pressHotkey } = require('./inject');
+const { pasteIntoActiveApp, pressHotkey, copySelectionNow, withTargetApp } = require('./inject');
 const { audioCost, textCost } = require('./pricing');
 const { LocalWhisper, recommendedModelId } = require('./local-whisper');
 const { correctTranscript } = require('./corrections');
@@ -23,11 +24,12 @@ if (!app.requestSingleInstanceLock()) {
 let store;
 let barWin = null;
 let settingsWin = null;
+let reviewWin = null;
 let tray = null;
 const rt = new RealtimeTranscriber();
 
 // --- état ---
-let state = 'idle'; // idle | connecting | listening | transcribing | writing | error
+let state = 'idle'; // idle | connecting | listening | transcribing | writing | correcting | error
 let recording = false;
 let audioBytes = 0; // octets PCM16 24 kHz envoyés pour l'énoncé en cours (48 000 o/s)
 let peakLevel = 0; // niveau crête observé pendant l'énoncé (0..1) : détection de silence
@@ -230,7 +232,7 @@ function openSettings() {
 // dimensions de la barre : fine ou avec la zone de texte ; plus large en mode Courrier (deux boutons de plus)
 function barSize() {
   const win = process.platform === 'win32';
-  const width = (store.settings.mode === 'courrier' ? 480 : 400) + (win ? 40 : 0);
+  const width = (store.settings.mode === 'courrier' ? 550 : 470) + (win ? 40 : 0);
   const height = panelShown ? (win ? 200 : 190) : (win ? 76 : 70);
   return [width, height];
 }
@@ -314,6 +316,7 @@ function registerHotkeys() {
   reg(h.rediger, () => rediger(), 'rédiger');
   reg(h.newDraft, newDraft, 'nouveau courrier');
   reg(h.copyLastText, copyLastText, 'copier');
+  reg(h.correctSelection, () => correctSelection(), 'corriger la sélection');
 }
 
 function toggleMode() {
@@ -514,7 +517,7 @@ async function processTranscript(raw) {
   await pasteText(text);
 }
 
-async function pasteText(text) {
+async function pasteText(text, { raw = false } = {}) {
   // Si une de nos fenêtres a le focus (réglages), on ne colle pas : on copie.
   const focused = BrowserWindow.getFocusedWindow();
   if (focused) {
@@ -525,7 +528,7 @@ async function pasteText(text) {
     return;
   }
   let toPaste = text;
-  if (store.settings.mode === 'direct' && store.settings.injection.autoSpace && lastInjected && !/[\s\n]$/.test(lastInjected) && !/^[\s\n,.;:!?)»]/.test(text)) {
+  if (!raw && store.settings.mode === 'direct' && store.settings.injection.autoSpace && lastInjected && !/[\s\n]$/.test(lastInjected) && !/^[\s\n,.;:!?)»]/.test(text)) {
     toPaste = ' ' + text;
   }
   try {
@@ -540,6 +543,133 @@ async function pasteText(text) {
     setPanel(true);
     setState('error', 'collage impossible, texte copié');
     showRightsDialog(e);
+  }
+}
+
+// --- correction du texte sélectionné dans l'application active ---
+// La sélection est copiée, relue par le modèle, puis proposée dans une fenêtre (différences, texte modifiable) ; « Remplacer » la colle à la place.
+let correcting = false;
+let reviewTrailing = ''; // blancs de fin de la sélection, conservés au remplacement
+function openReviewWindow() {
+  if (reviewWin && !reviewWin.isDestroyed()) { reviewWin.show(); reviewWin.focus(); return reviewWin; }
+  reviewWin = new BrowserWindow({
+    width: 640, height: 480, minWidth: 420, minHeight: 300,
+    title: 'Correction — Dictopen',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1f22' : '#ffffff',
+    autoHideMenuBar: true, alwaysOnTop: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+  });
+  watchWindow(reviewWin, 'correction');
+  reviewWin.loadFile(path.join(__dirname, '..', 'renderer', 'review.html'));
+  reviewWin.on('closed', () => { reviewWin = null; });
+  return reviewWin;
+}
+function sendReview(data) {
+  const win = openReviewWindow();
+  const deliver = () => { if (win && !win.isDestroyed()) win.webContents.send('review:data', data); };
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', deliver); else deliver();
+}
+function closeReviewWindow() {
+  if (reviewWin && !reviewWin.isDestroyed()) reviewWin.close();
+  reviewWin = null;
+  if (process.platform === 'darwin') app.hide(); // rend l'activation à l'application précédente (la barre n'est pas focalisable)
+}
+
+async function correctSelection() {
+  if (correcting || writing) return;
+  if (recording) await stopRecording();
+  const keys = await correctionKeys();
+  const prov = store.settings.correction.provider || 'openai';
+  if ((prov === 'openai' && !keys.openai) || (prov === 'anthropic' && !keys.anthropic)) { openSettings(); notice('error', prov === 'anthropic' ? 'Aucune clé Anthropic' : 'Aucune clé API'); return; }
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && focused !== reviewWin) { notice('error', 'Sélectionnez le texte dans l’application cible'); return; }
+  if (focused === reviewWin && reviewWin) closeReviewWindow();
+  correcting = true;
+  setState('correcting', 'lecture de la sélection');
+  try {
+    const cfg = store.settings.correction;
+    // Dictopen s'efface si la barre l'a mis au premier plan ; navigateur devant → l'extension « Dictopen pour Chrome »
+    // sélectionne et corrige dans la page ; sinon la sélection est copiée ici
+    const original = await withTargetApp(async (front) => {
+      if (cfg.localApi && BROWSERS.test(front)) {
+        if (localApi.broadcast({ type: 'correct' })) { console.log('correction : navigateur au premier plan → ordre envoyé à l’extension'); return null; }
+        if (cfg.browserShortcut) {
+          console.log(`correction : navigateur au premier plan, extension non connectée → raccourci ${cfg.browserShortcut}`);
+          await pressHotkey(cfg.browserShortcut);
+          return null;
+        }
+      }
+      return copySelectionNow();
+    });
+    if (original === null) { setState('idle'); return; }
+    if (!original.trim()) { setState('idle'); notice('error', 'Sélectionnez d’abord le texte à corriger'); return; }
+    console.log(`correction : ${original.length} caractères sélectionnés (${cfg.provider || 'openai'})`);
+    reviewTrailing = (original.match(/[\s]*$/) || [''])[0];
+    setState('correcting');
+    sendReview({ original: '', corrected: '', pending: true });
+    const t0 = Date.now();
+    const r = await correctText(keys, cfg, original, { level: cfg.level });
+    if (!r.text) throw new Error('Correction : réponse vide');
+    const usage = store.addUsage({ corrections: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(r.model, r.inputTokens, r.outputTokens) });
+    send('usage', usage);
+    if (tray) tray.refresh();
+    const same = r.text === original.trimEnd();
+    console.log(`correction : ${r.text.length} caractères, ${r.inputTokens}/${r.outputTokens} jetons, ${Date.now() - t0} ms${same ? ', aucune modification' : ''}`);
+    lastText = r.text;
+    setState('idle', same ? 'aucune correction nécessaire' : 'correction proposée');
+    sendReview({ original: original.trimEnd(), corrected: r.text, ms: Date.now() - t0 });
+  } catch (e) {
+    console.error('correction : échec', e.message);
+    setState('error', e.message);
+    notice('error', e.message);
+    if (reviewWin) sendReview({ error: e.message });
+    showRightsDialog(e);
+  } finally {
+    correcting = false;
+  }
+}
+
+const BROWSERS = /^(Google Chrome|Chromium|Brave Browser|Microsoft Edge|Arc|Vivaldi|Opera|firefox|Firefox|chrome|msedge|brave|opera|vivaldi)/i;
+// API locale pour l'extension de navigateur : relecture d'un texte (ou de segments balisés) avec la clé enregistrée
+const localApi = new LocalApi({
+  version: app.getVersion(),
+  log: (m) => console.log(m),
+  onCorrect: async ({ text, level, segments, context }) => {
+    const cfg = store.settings.correction;
+    const keys = await correctionKeys();
+    const t0 = Date.now();
+    const r = await correctText(keys, cfg, text, { level, segments, context });
+    const usage = store.addUsage({ corrections: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(r.model, r.inputTokens, r.outputTokens) });
+    send('usage', usage);
+    if (tray) tray.refresh();
+    console.log(`correction (extension, ${cfg.provider || 'openai'}/${r.model}, ${level}${segments ? ', segments' : ''}) : ${text.length} → ${r.text.length} caractères, ${r.inputTokens}/${r.outputTokens} jetons, ${Date.now() - t0} ms`);
+    return { text: r.text, ms: Date.now() - t0 };
+  },
+});
+async function correctionKeys() {
+  return { openai: await store.getApiKey('openai'), anthropic: await store.getApiKey('anthropic') };
+}
+
+function applyLocalApi() {
+  const cfg = store.settings.correction;
+  if (cfg.localApi) localApi.start(Number(cfg.localApiPort) || 47395); else localApi.stop();
+}
+
+async function replaceWithReview(text) {
+  closeReviewWindow();
+  await new Promise((r) => setTimeout(r, 400)); // le temps que l'application cible redevienne active
+  if (BrowserWindow.getFocusedWindow()) return { error: 'L’application cible n’a pas repris le focus : utilisez « Copier »' };
+  try {
+    await pasteIntoActiveApp(text + reviewTrailing, store.settings.injection);
+    console.log(`correction : ${text.length} caractères remplacés`);
+    setState('idle', 'texte remplacé');
+    return { ok: true };
+  } catch (e) {
+    console.error('correction : remplacement échoué', e.message);
+    clipboard.writeText(text);
+    setState('error', 'remplacement impossible, texte copié');
+    showRightsDialog(e);
+    return { error: `Remplacement impossible (${e.message}) : texte copié, collez-le avec ⌘V` };
   }
 }
 
@@ -690,6 +820,7 @@ async function runAction(action) {
   if (action === 'newDraft') return newDraft();
   if (action === 'cancel') return cancelRecording();
   if (action === 'copyLastText') return copyLastText();
+  if (action === 'correctSelection') return correctSelection();
   if (action === 'openSettings') return openSettings();
   if (action.startsWith('hotkey:')) {
     try { await pressHotkey(action.slice(7)); } catch (e) { showRightsDialog(e); }
@@ -703,6 +834,7 @@ function setupIpc() {
   ipcMain.handle('settings:save', (_e, partial) => {
     const before = JSON.stringify({ t: store.effectiveTranscription(), h: store.settings.hotkeys, m: store.settings.mode, p: store.currentProvider() });
     const s = store.saveSettings(partial);
+    if (partial && partial.correction) applyLocalApi();
     const after = JSON.stringify({ t: store.effectiveTranscription(), h: s.hotkeys, m: s.mode, p: store.currentProvider() });
     if (before !== after) {
       registerHotkeys();
@@ -717,12 +849,21 @@ function setupIpc() {
   });
   ipcMain.handle('mode:set', (_e, mode) => { setMode(mode); return store.settings.mode; });
   ipcMain.handle('mode:toggle', () => { toggleMode(); return store.settings.mode; });
-  ipcMain.handle('apikey:masked', () => store.maskedApiKey());
+  ipcMain.handle('apikey:masked', (_e, provider) => store.maskedApiKey(provider || 'openai'));
   ipcMain.handle('clipboard:readText', () => clipboard.readText());
-  ipcMain.handle('apikey:set', async (_e, key) => { await store.setApiKey(key); rt.close(); return store.maskedApiKey(); });
-  ipcMain.handle('apikey:test', async () => {
-    const key = await store.getApiKey();
+  ipcMain.handle('apikey:set', async (_e, key, provider) => { await store.setApiKey(key, provider || 'openai'); if (!provider || provider === 'openai') rt.close(); return store.maskedApiKey(provider || 'openai'); });
+  ipcMain.handle('apikey:test', async (_e, provider) => {
+    if (provider === 'claude-code') { const exe = findClaudeCode(); return exe ? { ok: true, message: `Claude Code trouvé : ${exe}` } : { ok: false, message: 'Claude Code introuvable : installez l’application Claude et connectez-vous' }; }
+    const key = await store.getApiKey(provider || 'openai');
     if (!key) return { ok: false, message: 'aucune clé enregistrée' };
+    if (provider === 'anthropic') {
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } });
+        if (res.ok) return { ok: true, message: 'clé Anthropic valide' };
+        const j = await res.json().catch(() => ({}));
+        return { ok: false, message: `HTTP ${res.status} ${j.error?.message || ''}` };
+      } catch (e) { return { ok: false, message: e.message }; }
+    }
     try {
       const res = await fetch('https://api.openai.com/v1/models/gpt-live-transcribe', { headers: { Authorization: `Bearer ${key}` } });
       if (res.ok) return { ok: true, message: 'clé valide, modèle de transcription accessible' };
@@ -743,6 +884,10 @@ function setupIpc() {
   ipcMain.handle('draft:new', newDraft);
   ipcMain.handle('draft:get', () => ({ text: draft, letter: lastLetter }));
   ipcMain.handle('text:copyLast', copyLastText);
+  ipcMain.handle('text:correctSelection', correctSelection);
+  ipcMain.handle('review:replace', (_e, text) => replaceWithReview(String(text || '')));
+  ipcMain.handle('review:copy', (_e, text) => { clipboard.writeText(String(text || '')); });
+  ipcMain.handle('review:close', () => closeReviewWindow());
 
   ipcMain.on('audio:chunk', (_e, buf) => {
     if (!recording) return;
@@ -834,6 +979,7 @@ app.whenReady().then(() => {
   createBar();
   createTray();
   registerHotkeys();
+  applyLocalApi();
   applyLaunchAtLogin();
   updateClipboardWatch();
   if (!store.hasApiKey()) openSettings();
@@ -843,6 +989,25 @@ app.whenReady().then(() => {
     // le moteur local se charge en parallèle des demandes d'autorisation (elles peuvent attendre l'utilisateur)
     if (store.currentProvider() === 'local') ensureLocalReady().then(() => setState('idle')).catch((e) => console.warn('moteur local', e.message));
     if (process.env.DICTOPEN_TEST_WAV) { setTimeout(() => runSelfTest(process.env.DICTOPEN_TEST_WAV), 12000); }
+    // diagnostic clavier/presse-papiers : qui est au premier plan, Cmd+A puis Cmd+C, lecture par trois voies
+    if (process.env.DICTOPEN_TEST_KEYS) {
+      setTimeout(async () => {
+        const { execFile } = require('child_process');
+        const osa = (script) => new Promise((r) => execFile('osascript', ['-e', script], { encoding: 'utf8' }, (err, out, serr) => r(err ? 'ERR ' + (serr || err.message).trim() : out.trim())));
+        const pb = () => new Promise((r) => execFile('pbpaste', [], { encoding: 'utf8' }, (err, out) => r(err ? 'ERR' : String(out.length))));
+        console.log('diag : premier plan =', await osa('tell application "System Events" to get name of first application process whose frontmost is true'));
+        console.log('diag : Cmd+A →', await osa('tell application "System Events" to keystroke "a" using command down'));
+        await new Promise((r) => setTimeout(r, 300));
+        console.log('diag : AX sélection =', await osa('tell application "System Events"\nset p to first application process whose frontmost is true\nset e to value of attribute "AXFocusedUIElement" of p\nreturn (length of (value of attribute "AXSelectedText" of e)) as text\nend tell'));
+        console.log('diag : pbpaste avant =', await pb());
+        console.log('diag : Cmd+C →', await osa('tell application "System Events" to keystroke "c" using command down'));
+        await new Promise((r) => setTimeout(r, 500));
+        console.log('diag : pbpaste après =', await pb(), '; the clipboard =', (await osa('return length of ((the clipboard) as text)')), '; electron =', String((await clipboard.readText().catch(() => 'ERR')).length));
+        console.log('diag : premier plan =', await osa('tell application "System Events" to get name of first application process whose frontmost is true'));
+      }, 6000);
+    }
+    // auto-test de la correction : sélectionne tout dans l'application au premier plan puis corrige
+    if (process.env.DICTOPEN_TEST_CORRECT) { setTimeout(async () => { try { await pressHotkey('Cmd+A'); await new Promise((r) => setTimeout(r, 500)); await correctSelection(); console.log(`auto-test correction : fenêtre affichée, état ${state}`); await new Promise((r) => setTimeout(r, 2500)); const res = await replaceWithReview(lastText); console.log(`auto-test correction : remplacement ${JSON.stringify(res)}`); } catch (e) { console.error('auto-test correction :', e.message); } }, 6000); }
     if (process.env.DICTOPEN_BATCH) { setTimeout(() => runBatch(process.env.DICTOPEN_BATCH).catch((e) => console.error('lot', e.message)), 3000); }
     try { await requestPermissions({ quiet: true }); } catch (e) { console.warn('autorisations', e.message); }
     try {

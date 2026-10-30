@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Correction</title>
+<style>
+  :root { --fond:#fff; --texte:#1d1d1f; --doux:#6e6e73; --bord:#d9d9de; --acc:#c96442;
+          --ins-f:#dff5e3; --ins-t:#136c2e; --del-f:#fde2e1; --del-t:#a1231b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fond:#1f1f22; --texte:#ececf1; --doux:#9a9aa3; --bord:#3a3a40; --acc:#e08a6a;
+            --ins-f:#173d22; --ins-t:#8ee0a4; --del-f:#4a1c1a; --del-t:#f3a29b; }
+  }
+  html, body { height:100%; margin:0; }
+  body { display:flex; flex-direction:column; background:var(--fond); color:var(--texte);
+         font:14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; -webkit-user-select:none; user-select:none; }
+  .t { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--bord); -webkit-app-region:drag; }
+  .t b { font-size:14px; }
+  .t small { color:var(--doux); }
+  .t .sp { flex:1; }
+  .c { flex:1; overflow:auto; padding:12px 14px; white-space:pre-wrap; word-wrap:break-word; outline:none;
+       -webkit-user-select:text; user-select:text; line-height:1.6; }
+  .c ins { background:var(--ins-f); color:var(--ins-t); text-decoration:none; border-radius:3px; }
+  .c del { background:var(--del-f); color:var(--del-t); border-radius:3px; -webkit-user-select:none; user-select:none; }
+  .c del.retab { cursor:pointer; }
+  .c .msg { color:var(--doux); }
+  .c .err { color:var(--del-t); }
+  .aide { padding:0 14px 6px; font-size:12px; color:var(--doux); }
+  .b { display:flex; gap:8px; align-items:center; padding:10px 14px; border-top:1px solid var(--bord); }
+  .b .sp { flex:1; }
+  button { font:inherit; padding:6px 14px; border:1px solid var(--bord); border-radius:8px; background:transparent; color:var(--texte); cursor:pointer; }
+  button:hover { border-color:var(--doux); }
+  button:disabled { opacity:.5; cursor:default; }
+  button.pr { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; }
+  .msg { color:var(--doux); font-size:13px; }
+  .ok { color:var(--ins-t); }
+  .rond { width:14px; height:14px; border:2px solid var(--bord); border-top-color:var(--acc); border-radius:50%;
+          animation:r .8s linear infinite; display:inline-block; vertical-align:-2px; margin-right:6px; }
+  @keyframes r { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="t"><b>Correction</b><small id="info"></small><span class="sp"></span></div>
+  <div class="c" id="corps"><span class="rond"></span>Relecture en cours…</div>
+  <div class="aide" id="aide"></div>
+  <div class="b">
+    <button class="pr" id="bRemplacer" disabled>Remplacer</button>
+    <button id="bCopier" disabled>Copier</button>
+    <button id="bRetablir" disabled>Rétablir la proposition</button>
+    <span class="sp"></span><span class="msg" id="statut"></span>
+    <button id="bFermer">Fermer</button>
+  </div>
+  <script src="review.js"></script>
+</body>
+</html>

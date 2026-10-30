@@ -31,7 +31,8 @@ Le contexte et les mots-clés sont transmis au moteur local comme à OpenAI. Le 
 - SpeechMike / PowerMic 4 / RecMic : appuyer-parler ou marche/arrêt, boutons configurables, LED rouge pendant l'enregistrement (voir `docs/speechmike-led.md`).
 - Raccourcis globaux capturés par position physique de touche (affichés tels qu'ils apparaissent sur votre clavier).
 - Contexte et mots-clés transmis au modèle de transcription (terminologie, médicaments, noms propres), plus une **correction phonétique** : tout mot prononcé comme un mot-clé est remplacé par ce mot-clé (« cardégique » → Kardégic, « acromio plastie » → acromioplastie), et une table de corrections explicites « entendu => voulu ».
-- Compteur de consommation estimée (minutes d'audio, énoncés, courriers, jetons).
+- **Corriger la sélection** : le texte sélectionné dans n'importe quelle application est relu par un modèle texte (orthographe, accords, concordance des temps, ponctuation) et proposé dans une fenêtre de relecture (différences, texte modifiable) avant remplacement. L'extension **Dictopen pour Chrome** (`extension/`, voir `docs/extension.md`) fait de même dans les logiciels web (Follow : variables du courrier, Doctolib, tout éditeur), sans sélection.
+- Compteur de consommation estimée (minutes d'audio, énoncés, courriers, corrections, jetons).
 - Clé API chiffrée par le système (trousseau macOS, DPAPI Windows). Réglages en JSON lisible.
 - Journal technique sans le texte dicté.
 

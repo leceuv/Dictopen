@@ -1,8 +1,11 @@
 'use strict';
 // Collage du texte dans l'application active : presse-papiers sauvegardé → Cmd+V (System Events) → restauration.
 // Les espaces et retours à la ligne finaux sont envoyés en touches, car Office les ignore au collage.
-const { clipboard, ClipboardItem } = require('electron');
+const { app, clipboard, ClipboardItem } = require('electron');
 const { execFile } = require('child_process');
+
+// osascript et pbpaste encodent leur sortie selon la locale : l'app lancée par le Finder n'en a pas → accents perdus sans ceci
+const UTF8_ENV = { ...process.env, LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' };
 
 const KEY_SPACE = 49;
 const KEY_RETURN = 36;
@@ -13,7 +16,7 @@ function delay(ms) {
 
 function runOsa(script) {
   return new Promise((resolve, reject) => {
-    execFile('osascript', ['-e', script], { encoding: 'utf8', timeout: 15000 }, (err, stdout, stderr) => {
+    execFile('osascript', ['-e', script], { encoding: 'utf8', timeout: 15000, env: UTF8_ENV }, (err, stdout, stderr) => {
       if (err) {
         console.error('osascript :', (stderr || '').trim(), '|', err.message);
         const e = new Error((stderr || err.message || '').trim());
@@ -131,6 +134,113 @@ async function pasteIntoActiveApp(text, opts = {}) {
   }
 }
 
+function readClipboardText() {
+  return new Promise((resolve) => {
+    const fallback = () => clipboard.readText().then((t) => resolve(t || ''), () => resolve(''));
+    if (IS_WIN) {
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw'],
+        { encoding: 'utf8', timeout: 5000, windowsHide: true }, (err, out) => (err ? fallback() : resolve((out || '').replace(/\r\n/g, '\n').replace(/\n$/, ''))));
+    } else {
+      execFile('pbpaste', [], { encoding: 'utf8', timeout: 5000, maxBuffer: 16 * 1024 * 1024, env: UTF8_ENV }, (err, out) => (err ? fallback() : resolve(out || '')));
+    }
+  });
+}
+
+// Lit le texte sélectionné dans l'application active : presse-papiers vidé → Cmd+C / Ctrl+C → lecture, puis restauration.
+// Résout avec '' si rien n'est sélectionné (le presse-papiers reste vide).
+function clearClipboard() {
+  return new Promise((resolve) => {
+    if (IS_WIN) {
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Set-Clipboard -Value $null'], { timeout: 5000, windowsHide: true }, () => resolve());
+    } else {
+      const p = execFile('pbcopy', [], { timeout: 5000, env: UTF8_ENV }, () => resolve());
+      p.stdin.end();
+    }
+  });
+}
+
+// macOS : texte sélectionné via l'accessibilité (AXSelectedText du champ actif), sans toucher au presse-papiers
+function readSelectedTextAX() {
+  return runOsa(`tell application "System Events"
+  set p to first application process whose frontmost is true
+  try
+    set e to value of attribute "AXFocusedUIElement" of p
+    return value of attribute "AXSelectedText" of e
+  on error
+    return ""
+  end try
+end tell`).then((out) => out.replace(/\n$/, ''), () => '');
+}
+
+// Lit le texte sélectionné dans l'application active : accessibilité (macOS), sinon presse-papiers vidé → Cmd+C / Ctrl+C → lecture, puis restauration.
+// Résout avec '' si rien n'est sélectionné.
+// nom de l'application au premier plan ('' sur Windows ou en cas d'erreur)
+function frontmostApp() {
+  if (IS_WIN) {
+    const script = 'Add-Type @"\nusing System;using System.Runtime.InteropServices;public class W{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);}\n"@\n$p=0;[W]::GetWindowThreadProcessId([W]::GetForegroundWindow(),[ref]$p)|Out-Null;(Get-Process -Id $p).ProcessName';
+    return runPowerShell(script).then((out) => out.trim(), () => '');
+  }
+  return runOsa('tell application "System Events" to get name of first application process whose frontmost is true').then((out) => out.trim(), () => '');
+}
+
+// Si Dictopen est passé au premier plan (clic sur la barre), il s'efface pour rendre la main à l'application
+// où est le texte ; résout avec le nom de cette application. Appeler fn, puis restaurer avec app.show().
+async function withTargetApp(fn) {
+  let front = await frontmostApp();
+  let hidden = false;
+  if (/dictopen|electron/i.test(front)) {
+    app.hide();
+    hidden = true;
+    await delay(350);
+    front = await frontmostApp();
+  }
+  console.log(`sélection : premier plan = ${front}`);
+  try {
+    return await fn(front);
+  } finally {
+    if (hidden) app.show();
+  }
+}
+
+async function copySelection() {
+  return withTargetApp(() => copySelectionNow());
+}
+
+async function copySelectionNow() {
+  if (!IS_WIN) {
+    const ax = await readSelectedTextAX();
+    console.log(`sélection : accessibilité → ${ax.length} caractères`);
+    if (ax.trim()) return ax;
+  }
+  const saved = await saveClipboard();
+  try {
+    await clearClipboard();
+    console.log(`sélection : presse-papiers vidé (${(await readClipboardText()).length} caractères), copie par raccourci`);
+    if (IS_WIN) {
+      await runPowerShell(`
+Add-Type -AssemblyName System.Windows.Forms
+for ($i = 0; $i -lt 60; $i++) {
+  $m = [System.Windows.Forms.Control]::ModifierKeys
+  if (($m -band [System.Windows.Forms.Keys]::Control) -eq 0 -and ($m -band [System.Windows.Forms.Keys]::Alt) -eq 0) { break }
+  Start-Sleep -Milliseconds 50
+}
+[System.Windows.Forms.SendKeys]::SendWait('^c')`);
+    } else {
+      await runOsa(WAIT_MODIFIERS + '\ntell application "System Events" to keystroke "c" using command down');
+    }
+    // l'application cible remplit le presse-papiers de façon asynchrone ; lecture par l'outil système (fiable), puis Electron
+    for (let i = 0; i < 30; i++) {
+      await delay(50);
+      const text = await readClipboardText();
+      if (text) { console.log(`sélection : copie → ${text.length} caractères après ${(i + 1) * 50} ms`); return text; }
+    }
+    console.log('sélection : presse-papiers toujours vide après 1,5 s');
+    return '';
+  } finally {
+    await restoreClipboard(saved);
+  }
+}
+
 async function pressHotkey(accelerator) {
   // accelerator façon Electron : "Ctrl+Alt+Escape" → System Events (macOS) ou SendKeys (Windows)
   const parts = accelerator.split('+').map((s) => s.trim()).filter(Boolean);
@@ -151,13 +261,18 @@ async function pressHotkey(accelerator) {
     else if (q === 'shift') mods.push('shift down');
     else if (q === 'cmd' || q === 'command' || q === 'meta' || q === 'super') mods.push('command down');
   }
+  // lettres et chiffres par code de touche (disposition ANSI) : avec Option, « keystroke » enverrait le caractère spécial
+  // (⌥⇧C → Ç) et le raccourci ne serait pas reconnu par l'application
   const KEYCODES = { Escape: 53, Return: 36, Enter: 36, Tab: 48, Space: 49, Backspace: 51, Delete: 117, Up: 126, Down: 125, Left: 123, Right: 124, Home: 115, End: 119, PageUp: 116, PageDown: 121,
-    F1: 122, F2: 120, F3: 99, F4: 118, F5: 96, F6: 97, F7: 98, F8: 100, F9: 101, F10: 109, F11: 103, F12: 111 };
+    F1: 122, F2: 120, F3: 99, F4: 118, F5: 96, F6: 97, F7: 98, F8: 100, F9: 101, F10: 109, F11: 103, F12: 111,
+    A: 0, S: 1, D: 2, F: 3, H: 4, G: 5, Z: 6, X: 7, C: 8, V: 9, B: 11, Q: 12, W: 13, E: 14, R: 15, Y: 16, T: 17, O: 31, U: 32, I: 34, P: 35, L: 37, J: 38, K: 40, N: 45, M: 46,
+    1: 18, 2: 19, 3: 20, 4: 21, 6: 22, 5: 23, 9: 25, 7: 26, 8: 28, 0: 29 };
   const using = mods.length ? ` using {${mods.join(', ')}}` : '';
-  const script = KEYCODES[key] !== undefined
-    ? `tell application "System Events" to key code ${KEYCODES[key]}${using}`
+  const code = KEYCODES[key] !== undefined ? KEYCODES[key] : KEYCODES[key.toUpperCase()];
+  const script = code !== undefined
+    ? `tell application "System Events" to key code ${code}${using}`
     : `tell application "System Events" to keystroke "${key.toLowerCase().replace(/"/g, '\\"')}"${using}`;
   await runOsa(script);
 }
 
-module.exports = { pasteIntoActiveApp, pressHotkey };
+module.exports = { pasteIntoActiveApp, pressHotkey, copySelection, copySelectionNow, withTargetApp, frontmostApp };

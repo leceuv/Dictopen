@@ -73,6 +73,7 @@
       <tr><td>Audio transcrit</td><td id="usageAudio"></td></tr>
       <tr><td>Énoncés</td><td id="usageUtt"></td></tr>
       <tr><td>Courriers rédigés</td><td id="usageLetters"></td></tr>
+      <tr><td>Textes corrigés</td><td id="usageCorrections"></td></tr>
       <tr><td>Rédaction : jetons entrée / sortie</td><td id="usageTokens"></td></tr>
     </table>
     <p class="hint">Estimation avec les tarifs publics du 24/10/2026. La facture réelle fait foi.</p>
@@ -126,6 +127,45 @@
     <p class="hint">La date du jour est ajoutée automatiquement. Après un courrier, une nouvelle dictée + « Rédiger » = correction du courrier précédent (repris en entier). « Nouveau » repart de zéro.</p>
   </section>
 
+  <section>
+    <h2>Corriger la sélection</h2>
+    <p class="hint">Sélectionnez un texte déjà écrit dans n'importe quelle application (courrier terminé, compte rendu), puis ⌃⌥R, le bouton F1 du SpeechMike ou l'action « corriger le texte sélectionné » : le texte est relu par le modèle (orthographe, accords, concordance des temps, ponctuation, erreurs de reconnaissance évidentes) et proposé dans une fenêtre : retraits en rouge, ajouts en vert, texte modifiable, puis « Remplacer » le colle à la place de la sélection. Rien n'est reformulé ni ajouté. Le texte sélectionné est envoyé à OpenAI.</p>
+    <div class="row"><label>Correcteur</label>
+      <select id="k_provider">
+        <option value="openai">OpenAI (clé ci-dessus)</option>
+        <option value="anthropic">Claude — clé API Anthropic</option>
+        <option value="claude-code">Claude — abonnement Claude Pro/Max (application Claude installée)</option>
+      </select></div>
+    <div class="row k-anthropic"><label>Modèle Claude</label>
+      <select id="k_anthropicModel">
+        <option value="claude-sonnet-5-5">Sonnet 5.5 (recommandé)</option>
+        <option value="claude-haiku-4-5-20251001">Haiku 4.5 (rapide, économique)</option>
+        <option value="claude-opus-5-5">Opus 5.5 (le plus soigné)</option>
+      </select></div>
+    <div class="row k-anthropic"><label>Clé Anthropic enregistrée</label><span id="akeyMasked" class="hint">aucune</span></div>
+    <div class="row k-anthropic"><label>Nouvelle clé Anthropic</label><input type="password" id="akeyInput" placeholder="sk-ant-…" autocomplete="off"><button class="secondary" id="akeyPaste">Coller</button><button id="akeySave">Enregistrer</button><button class="secondary" id="akeyTest">Tester</button></div>
+    <p class="hint k-anthropic" id="akeyResult">Clé créée sur console.anthropic.com ; chiffrée dans le trousseau comme la clé OpenAI.</p>
+    <div class="row k-claude-code"><label>Modèle Claude Code</label>
+      <select id="k_claudeCodeModel"><option value="sonnet">Sonnet (recommandé)</option><option value="haiku">Haiku (rapide)</option><option value="opus">Opus (le plus soigné, lent)</option></select>
+      <button class="secondary" id="ccTest">Vérifier l'installation</button><span class="hint" id="ccResult"></span></div>
+    <p class="hint k-claude-code">Utilise les quotas de votre abonnement Claude via l'application Claude (ou la commande <code>claude</code>) installée et connectée sur cet ordinateur ; aucun coût à l'usage.</p>
+    <div class="row k-openai"><label>Modèle</label>
+      <select id="k_model">
+        <option value="gpt-5-mini">gpt-5-mini (recommandé, ≈ 0,001 $ par courrier)</option>
+        <option value="gpt-5">gpt-5 (≈ 0,005 $ par courrier)</option>
+        <option value="gpt-5-nano">gpt-5-nano (très économique)</option>
+        <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+        <option value="gpt-4.1">gpt-4.1</option>
+      </select></div>
+    <div class="row"><label>Niveau</label>
+      <select id="k_level"><option value="ortho">orthographe, accords, ponctuation (rien n'est reformulé)</option><option value="style">+ légère amélioration du style</option></select></div>
+    <div class="row k-openai"><label>Effort de raisonnement (gpt-5)</label>
+      <select id="k_effort"><option value="minimal">minimal (plus rapide)</option><option value="low">bas</option><option value="medium">moyen</option></select></div>
+    <div class="row"><label>Consignes supplémentaires</label></div>
+    <textarea id="k_instructions" placeholder="Facultatif : ex. « conserver les abréviations ATCD, TDM, IRM », « ne pas toucher aux formules de politesse »…"></textarea>
+    <div class="row"><label>Extension « Dictopen pour Chrome »</label><input type="checkbox" id="k_localApi"><span class="hint">port local <input type="text" id="k_port" style="width:70px"> — l'extension (dossier <code>extension</code> du dépôt) lit le courrier dans la page web (Follow, Doctolib…), le fait corriger par Dictopen et le remplace variable par variable. Quand un navigateur est au premier plan, « Corriger » déclenche l'extension (raccourci Alt+Maj+C).</span></div>
+  </section>
+
   <section id="localSection">
     <h2>Transcription locale</h2>
     <p class="hint" id="localIntro">Moteur whisper.cpp intégré : l'audio ne quitte pas l'ordinateur, aucun coût. Le texte arrive après le relâchement (pas d'affichage en direct). Choisissez un modèle selon votre machine, puis sélectionnez « Locale » dans le mode voulu.</p>
@@ -166,6 +206,7 @@
     <div class="row"><label>Rédiger le courrier</label><input type="text" id="h_rediger" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="rediger">Effacer</button></div>
     <div class="row"><label>Nouveau courrier</label><input type="text" id="h_newDraft" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="newDraft">Effacer</button></div>
     <div class="row"><label>Copier le dernier texte</label><input type="text" id="h_copyLastText" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="copyLastText">Effacer</button></div>
+    <div class="row"><label>Corriger la sélection</label><input type="text" id="h_correctSelection" class="keycap" readonly placeholder="cliquez puis appuyez sur la touche"><button class="secondary" data-clear="correctSelection">Effacer</button></div>
     <p class="hint">Cliquez dans le champ puis appuyez sur la combinaison voulue (avec ⌃ ⌥ ⇧ ⌘ si besoin). La touche est enregistrée par sa position physique, telle qu'elle apparaît sur votre clavier. « Effacer » désactive le raccourci.</p>
   </section>
 

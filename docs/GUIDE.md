@@ -42,6 +42,11 @@ La barre flottante reste au-dessus des autres fenêtres (déplaçable, masquable
 - **Rédiger** (bouton, EOL du SpeechMike ou ⌃⌥T) : le courrier complet est rédigé par GPT selon votre prompt maître, puis collé dans l'application active.
 - Redictez une correction (« ajoute que… », « finalement l'IRM montre… ») puis Rédiger : le courrier est repris en entier. **Nouveau** (F3 ou ⌃⌥N) pour le patient suivant.
 
+**Corriger un texte déjà écrit** (les deux modes)
+- Sélectionnez le texte dans n'importe quelle application (le courrier terminé, par exemple), puis ⌃⌥R ou le bouton F1 du SpeechMike.
+- Le texte est relu par GPT (orthographe, accords, concordance des temps, ponctuation, erreurs de reconnaissance évidentes) et proposé dans une fenêtre : retraits en rouge, ajouts en vert, texte modifiable ; **Remplacer** le colle à la place de la sélection.
+- Dans un logiciel web (Follow, Doctolib…), installez l'extension **Dictopen pour Chrome** (`docs/extension.md`) : elle reconnaît le courrier dans la page, sans même le sélectionner, et le remplace variable par variable.
+
 ## 5. Personnaliser (⚙ Réglages)
 
 - **Prompt maître** (mode Courrier) : décrivez votre spécialité, votre nom pour la signature, vos formules et vos corrections de dictée fréquentes. C'est ce qui fait la qualité du courrier.

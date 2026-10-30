@@ -26,6 +26,21 @@ const DEFAULTS = {
   local: {
     modelId: '', // vide = modèle recommandé pour la machine
   },
+  // « Corriger la sélection » : le texte sélectionné dans l'application active est relu par un modèle texte et recollé à sa place
+  correction: {
+    provider: 'openai', // 'openai' (clé OpenAI), 'anthropic' (clé Anthropic) ou 'claude-code' (abonnement Claude, via Claude Code installé)
+    model: 'gpt-5-mini',
+    anthropicModel: 'claude-sonnet-5-5',
+    claudeCodeModel: 'sonnet',
+    reasoningEffort: 'minimal',
+    level: 'ortho', // 'ortho' (orthographe, accords, ponctuation) ou 'style' (+ légère amélioration)
+    instructions: '', // consignes ajoutées au prompt de correction (ex. formules à conserver)
+    // extension « Dictopen pour Chrome » : serveur local pour la correction, et raccourci de l'extension déclenché
+    // par « Corriger » quand un navigateur est au premier plan (sélection automatique dans la page)
+    localApi: true,
+    localApiPort: 47395,
+    browserShortcut: 'Alt+Shift+C',
+  },
   transcription: {
     languages: ['fr'],
     prompt: 'Dictée médicale en français : compte rendu de consultation de chirurgie orthopédique.',
@@ -49,6 +64,7 @@ const DEFAULTS = {
     rediger: 'Ctrl+Alt+T',
     newDraft: 'Ctrl+Alt+N',
     copyLastText: 'Ctrl+Alt+C',
+    correctSelection: 'Ctrl+Alt+R',
   },
   hotkeyLabels: {}, // libellé tel que vu sur le clavier de l'utilisateur (ex. « ` » pour l'accélérateur « \\ » sur un Mac AZERTY)
   speechMikeButtons: {
@@ -58,7 +74,7 @@ const DEFAULTS = {
     playOrPause: 'none',
     rewind: 'none',
     fastForward: 'none',
-    F1: 'none',
+    F1: 'correctSelection',
     F2: 'none',
     F3: 'newDraft',
     F4: 'toggleMode',
@@ -95,7 +111,8 @@ class Store {
     fs.mkdirSync(this.dir, { recursive: true });
     this.migrateFromOldFolder();
     this.settingsFile = path.join(this.dir, 'settings.json');
-    this.keyFile = path.join(this.dir, 'apikey.bin');
+    this.keyFile = path.join(this.dir, 'apikey.bin'); // clé OpenAI
+    this._keys = {};
     this.usageFile = path.join(this.dir, 'usage.json');
     this.settings = deepMerge(DEFAULTS, this.migrate(this.readJson(this.settingsFile, {})));
     this.usage = this.readJson(this.usageFile, null) || this.freshUsage();
@@ -178,11 +195,6 @@ class Store {
   }
 
   // --- clé API ---
-  hasApiKey() {
-    return fs.existsSync(this.keyFile);
-  }
-
-  // Le trousseau peut mettre quelques secondes à répondre au premier lancement : on réessaie.
   async encryptionReady() {
     for (let i = 0; i < 10; i++) {
       const ok = safeStorage.isAsyncEncryptionAvailable ? await safeStorage.isAsyncEncryptionAvailable() : safeStorage.isEncryptionAvailable();
@@ -192,11 +204,20 @@ class Store {
     throw new Error('Trousseau macOS indisponible (safeStorage)');
   }
 
-  async getApiKey() {
-    if (this._apiKey !== undefined) return this._apiKey;
-    if (!this.hasApiKey()) return null;
+  // provider : 'openai' (transcription, rédaction, correction) ou 'anthropic' (correction avec Claude)
+  keyFileFor(provider) {
+    return provider === 'anthropic' ? path.join(this.dir, 'apikey-anthropic.bin') : this.keyFile;
+  }
+
+  hasApiKey(provider = 'openai') {
+    return fs.existsSync(this.keyFileFor(provider));
+  }
+
+  async getApiKey(provider = 'openai') {
+    if (this._keys[provider] !== undefined) return this._keys[provider];
+    if (!this.hasApiKey(provider)) return null;
     await this.encryptionReady();
-    const buf = fs.readFileSync(this.keyFile);
+    const buf = fs.readFileSync(this.keyFileFor(provider));
     let k;
     try {
       k = safeStorage.decryptString(buf);
@@ -206,27 +227,27 @@ class Store {
       return null;
     }
     if (typeof k !== 'string') throw new Error(`clé déchiffrée invalide (${typeof k})`);
-    this._apiKey = k.trim();
-    return this._apiKey;
+    this._keys[provider] = k.trim();
+    return this._keys[provider];
   }
 
-  async setApiKey(key) {
+  async setApiKey(key, provider = 'openai') {
     if (typeof key !== 'string') throw new Error(`clé invalide (${typeof key})`);
     key = key.trim();
-    this._apiKey = undefined;
+    delete this._keys[provider];
     if (!key) {
-      if (this.hasApiKey()) fs.unlinkSync(this.keyFile);
+      if (this.hasApiKey(provider)) fs.unlinkSync(this.keyFileFor(provider));
       return;
     }
     await this.encryptionReady();
     const enc = safeStorage.encryptString(key);
-    fs.writeFileSync(this.keyFile, enc, { mode: 0o600 });
-    this._apiKey = key;
+    fs.writeFileSync(this.keyFileFor(provider), enc, { mode: 0o600 });
+    this._keys[provider] = key;
   }
 
-  async maskedApiKey() {
+  async maskedApiKey(provider = 'openai') {
     try {
-      const k = await this.getApiKey();
+      const k = await this.getApiKey(provider);
       if (!k) return '';
       return k.slice(0, 7) + '…' + k.slice(-4);
     } catch {
@@ -236,11 +257,11 @@ class Store {
 
   // --- consommation ---
   freshUsage() {
-    return { since: new Date().toISOString(), audioSeconds: 0, utterances: 0, letters: 0, textInputTokens: 0, textOutputTokens: 0, usd: 0 };
+    return { since: new Date().toISOString(), audioSeconds: 0, utterances: 0, letters: 0, corrections: 0, textInputTokens: 0, textOutputTokens: 0, usd: 0 };
   }
 
   addUsage(delta) {
-    for (const k of ['audioSeconds', 'utterances', 'letters', 'textInputTokens', 'textOutputTokens', 'usd']) {
+    for (const k of ['audioSeconds', 'utterances', 'letters', 'corrections', 'textInputTokens', 'textOutputTokens', 'usd']) {
       if (delta[k]) this.usage[k] = (this.usage[k] || 0) + delta[k];
     }
     this.writeJson(this.usageFile, this.usage);

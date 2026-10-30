@@ -10,7 +10,7 @@
   const ACTIONS = [
     ['none', '— rien —'], ['rediger', 'rédiger le courrier'], ['newDraft', 'nouveau courrier'], ['toggleMode', 'changer de mode'],
     ['toggleBar', 'afficher / masquer la barre'], ['toggleRecording', 'dicter marche/arrêt'], ['cancel', 'annuler l’énoncé'],
-    ['copyLastText', 'copier le dernier texte'], ['openSettings', 'ouvrir les réglages'], ['hotkey', 'raccourci clavier…'],
+    ['copyLastText', 'copier le dernier texte'], ['correctSelection', 'corriger le texte sélectionné'], ['openSettings', 'ouvrir les réglages'], ['hotkey', 'raccourci clavier…'],
   ];
 
   function showSaved() {
@@ -73,6 +73,7 @@
     $('usageAudio').textContent = `${(u.audioSeconds / 60).toFixed(1)} min`;
     $('usageUtt').textContent = u.utterances;
     $('usageLetters').textContent = u.letters || 0;
+    $('usageCorrections').textContent = u.corrections || 0;
     $('usageTokens').textContent = `${u.textInputTokens || 0} / ${u.textOutputTokens || 0}`;
   }
   renderUsage(await api.getUsage());
@@ -103,6 +104,34 @@
     $('c_prompt').value = '';
     await saveCourrier();
   });
+
+  // --- correction de la sélection ---
+  $('k_provider').value = settings.correction.provider || 'openai';
+  $('k_anthropicModel').value = settings.correction.anthropicModel || 'claude-sonnet-5-5';
+  $('k_claudeCodeModel').value = settings.correction.claudeCodeModel || 'sonnet';
+  const showProvider = () => { const p = $('k_provider').value; for (const cls of ['k-openai', 'k-anthropic', 'k-claude-code']) for (const el of document.querySelectorAll('.' + cls)) el.style.display = cls === 'k-' + p ? '' : 'none'; };
+  showProvider();
+  $('k_model').value = settings.correction.model || 'gpt-5-mini';
+  $('k_effort').value = settings.correction.reasoningEffort || 'minimal';
+  $('k_level').value = settings.correction.level || 'ortho';
+  $('k_instructions').value = settings.correction.instructions || '';
+  $('k_localApi').checked = settings.correction.localApi !== false;
+  $('k_port').value = settings.correction.localApiPort || 47395;
+  const saveCorrection = () => { showProvider(); return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value, localApi: $('k_localApi').checked, localApiPort: Math.max(1024, parseInt($('k_port').value, 10) || 47395) } }); };
+  for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions', 'k_localApi', 'k_port']) $(id).addEventListener('change', saveCorrection);
+  // clé Anthropic
+  const refreshAKey = async () => { $('akeyMasked').textContent = (await api.getApiKeyMasked('anthropic')) || 'aucune'; };
+  refreshAKey();
+  $('akeyPaste').addEventListener('click', async () => { $('akeyInput').value = (await api.readClipboardText()).trim(); });
+  $('akeySave').addEventListener('click', async () => {
+    const v = $('akeyInput').value.trim();
+    if (!v) { $('akeyResult').textContent = 'Le champ est vide.'; $('akeyResult').className = 'hint ko k-anthropic'; return; }
+    try { await api.setApiKey(v, 'anthropic'); } catch (e) { $('akeyResult').textContent = 'Échec : ' + e.message; $('akeyResult').className = 'hint ko k-anthropic'; return; }
+    $('akeyResult').textContent = 'Clé enregistrée. Cliquez sur « Tester ».'; $('akeyResult').className = 'hint ok k-anthropic';
+    $('akeyInput').value = ''; await refreshAKey(); showSaved();
+  });
+  $('akeyTest').addEventListener('click', async () => { $('akeyResult').textContent = 'Test en cours…'; const r = await api.testApiKey('anthropic'); $('akeyResult').textContent = r.message; $('akeyResult').className = 'hint k-anthropic ' + (r.ok ? 'ok' : 'ko'); });
+  $('ccTest').addEventListener('click', async () => { $('ccResult').textContent = '…'; const r = await api.testApiKey('claude-code'); $('ccResult').textContent = r.message; $('ccResult').className = 'hint ' + (r.ok ? 'ok' : 'ko'); });
 
   // --- transcription locale ---
   const fmtMo = (b) => `${Math.round(b / 1024 / 1024)} Mo`;
@@ -242,7 +271,7 @@
     el.value = acc ? (settings.hotkeyLabels[k] || acc) : '';
     el.title = acc ? `accélérateur Electron : ${acc}` : 'aucun raccourci';
   }
-  for (const k of ['toggleRecording', 'toggleBar', 'toggleMode', 'rediger', 'newDraft', 'copyLastText']) {
+  for (const k of ['toggleRecording', 'toggleBar', 'toggleMode', 'rediger', 'newDraft', 'copyLastText', 'correctSelection']) {
     const el = $('h_' + k);
     renderHotkey(k);
     el.addEventListener('focus', () => { el.value = 'appuyez sur une touche…'; });

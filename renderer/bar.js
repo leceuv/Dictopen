@@ -2,7 +2,7 @@
   const $ = (id) => document.getElementById(id);
   const LABELS = {
     idle: 'Prêt', connecting: 'Connexion à OpenAI…', listening: 'Écoute…', transcribing: 'Transcription…',
-    writing: 'Rédaction du courrier…', error: 'Erreur',
+    writing: 'Rédaction du courrier…', correcting: 'Correction de la sélection…', error: 'Erreur',
   };
   const PLACEHOLDER = {
     direct: 'Maintenez Record et dictez : chaque phrase est collée dans l’application active.',
@@ -33,6 +33,7 @@
     $('btnRec').classList.toggle('on', recording);
     $('btnRec').textContent = recording ? '■' : '●';
     $('btnRediger').disabled = !hasDraft || state === 'writing';
+    $('btnCorrect').disabled = state === 'correcting' || state === 'writing';
     const keyLabel = hotkey ? hotkey.replace('Ctrl', '⌃').replace('Alt', '⌥').replace('Shift', '⇧').replace('Cmd', '⌘').replace(/\+/g, '') : '';
     const devLabel = (audioDevice || 'micro ?').replace(/^default\s*-\s*/i, '').replace(/\s*\((built-in|intégré)\)\s*/i, '');
     if (mic && mic.connected) {
@@ -97,6 +98,7 @@
   $('btnRediger').addEventListener('click', () => window.dictee.rediger());
   $('btnNew').addEventListener('click', () => window.dictee.newDraft());
   $('btnCopy').addEventListener('click', () => window.dictee.copyLastText());
+  $('btnCorrect').addEventListener('click', () => window.dictee.correctSelection());
   $('mode').addEventListener('click', () => window.dictee.toggleMode());
   $('btnSettings').addEventListener('click', () => window.dictee.openSettings());
   $('btnHide').addEventListener('click', () => window.dictee.hideBar());
