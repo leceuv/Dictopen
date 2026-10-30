@@ -93,9 +93,6 @@
     <div class="row"><label>Bouton Record du SpeechMike</label>
       <select id="d_record"><option value="pressed">appuyer-parler (maintenu)</option><option value="toggle">marche / arrêt</option></select></div>
     <div class="row"><label>Ponctuation dictée locale</label><input type="checkbox" id="d_punct"><span class="hint">« virgule », « point à la ligne », « nouveau paragraphe »… convertis en signes</span></div>
-    <div class="row"><label>Extension Chrome</label><button class="secondary" id="extInstall">Installer « Dictopen pour Chrome »…</button><span class="hint" id="extResult"></span></div>
-    <p class="hint">Dans Chrome, le bouton <b>Corriger</b> de la barre (ou Alt+Maj+C) relit le texte sélectionné et le remplace dans la page après validation dans un panneau. <b>Sur Follow, c'est automatique</b> : rien à sélectionner, l'extension prend le courrier affiché en excluant l'en-tête : <b>le nom du patient n'est jamais envoyé</b> au modèle (OpenAI ou Claude), seules vos réponses partent. Elle les corrige, supprime les cases non remplies et les phrases devenues incohérentes, puis « Remplacer » réécrit le courrier dans Follow. Ailleurs (Doctolib, messagerie…), elle prend le champ de texte actif.</p>
-    <p class="hint" id="extSteps" style="display:none"></p>
   </section>
 
   <section>
@@ -128,7 +125,10 @@
 
   <section>
     <h2>Corriger la sélection</h2>
-    <p class="hint">Sélectionnez un texte déjà écrit dans n'importe quelle application (courrier terminé, compte rendu), puis ⌃⌥R, le bouton F1 du SpeechMike ou l'action « corriger le texte sélectionné » : le texte est relu par le modèle (orthographe, accords, concordance des temps, ponctuation, erreurs de reconnaissance évidentes) et proposé dans une fenêtre : retraits en rouge, ajouts en vert, texte modifiable, puis « Remplacer » le colle à la place de la sélection. Rien n'est reformulé ni ajouté. Le texte sélectionné est envoyé à OpenAI.</p>
+    <p class="hint">Sélectionnez un texte déjà écrit dans n'importe quelle application (Word, TextEdit, messagerie…), puis cliquez <b>Corriger</b> dans la barre (ou ⌃⌥R, ou F1 du SpeechMike) : le texte est relu (orthographe, accords, concordance des temps, ponctuation), proposé dans un panneau avec les différences (rouge = retiré, vert = ajouté, texte modifiable), puis <b>Remplacer</b> le recolle à sa place. Rien n'est reformulé ni ajouté.</p>
+    <div class="row"><label>Extension Chrome</label><button class="secondary" id="extInstall">Installer « Dictopen pour Chrome »…</button><span class="hint" id="extResult"></span></div>
+    <p class="hint">Dans Chrome, le bouton <b>Corriger</b> de la barre (ou Alt+Maj+C) relit le texte sélectionné et le remplace dans la page après validation dans un panneau. <b>Sur Follow, c'est automatique</b> : rien à sélectionner, l'extension prend le courrier affiché en excluant l'en-tête : <b>le nom du patient n'est jamais envoyé</b> au modèle (OpenAI ou Claude), seules vos réponses partent. Elle les corrige, supprime les cases non remplies et les phrases devenues incohérentes, puis « Remplacer » réécrit le courrier dans Follow. Ailleurs (Doctolib, messagerie…), elle prend le champ de texte actif.</p>
+    <p class="hint" id="extSteps" style="display:none"></p>
     <div class="row"><label>Correcteur</label>
       <select id="k_provider">
         <option value="openai">OpenAI (clé ci-dessus)</option>
@@ -162,7 +162,7 @@
       <select id="k_effort"><option value="minimal">minimal (plus rapide)</option><option value="low">bas</option><option value="medium">moyen</option></select></div>
     <div class="row"><label>Consignes supplémentaires</label></div>
     <textarea id="k_instructions" placeholder="Facultatif : ex. « conserver les abréviations ATCD, TDM, IRM », « ne pas toucher aux formules de politesse »…"></textarea>
-    <div class="row"><label>Extension « Dictopen pour Chrome »</label><input type="checkbox" id="k_localApi"><span class="hint">port local <input type="text" id="k_port" style="width:70px"> — l'extension (dossier <code>extension</code> du dépôt) lit le courrier dans la page web (Follow, Doctolib…), le fait corriger par Dictopen et le remplace variable par variable. Quand un navigateur est au premier plan, « Corriger » déclenche l'extension (raccourci Alt+Maj+C).</span></div>
+    <div class="row"><label>Liaison avec l'extension</label><input type="checkbox" id="k_localApi"><span class="hint">port local <input type="text" id="k_port" style="width:70px"> — l'extension (dossier <code>extension</code> du dépôt) lit le courrier dans la page web (Follow, Doctolib…), le fait corriger par Dictopen et le remplace variable par variable. Quand un navigateur est au premier plan, « Corriger » déclenche l'extension (raccourci Alt+Maj+C).</span></div>
   </section>
 
 
