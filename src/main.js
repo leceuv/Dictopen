@@ -612,9 +612,28 @@ async function correctSelection() {
 
 const BROWSERS = /^(Google Chrome|Chromium|Brave Browser|Microsoft Edge|Arc|Vivaldi|Opera|firefox|Firefox|chrome|msedge|brave|opera|vivaldi)/i;
 // API locale pour l'extension de navigateur : relecture d'un texte (ou de segments balisés) avec la clé enregistrée
+// réglages de l'extension tenus dans Dictopen et poussés par la liaison
+function extensionSettings() {
+  const c = store.settings.correction;
+  return { niveau: c.level === 'style' ? 'style' : 'ortho', paragraphes: c.paragraphes === 'garder' ? 'garder' : 'supprimer', afficherEnvoi: c.showSent !== false, envoiDirect: !!c.directSend };
+}
+function pushExtensionSettings() {
+  localApi.broadcast({ type: 'settings', ...extensionSettings() });
+}
 const localApi = new LocalApi({
   version: app.getVersion(),
   log: (m) => console.log(m),
+  onConnect: () => extensionSettings(),
+  onSetting: (st) => {
+    // « toujours envoyer sans vérification » coché depuis le panneau de l'extension
+    const partial = {};
+    if (typeof st.envoiDirect === 'boolean') partial.directSend = st.envoiDirect;
+    if (!Object.keys(partial).length) return;
+    store.saveSettings({ correction: partial });
+    console.log(`réglage reçu de l'extension : ${JSON.stringify(partial)}`);
+    pushExtensionSettings();
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('settings:changed', store.settings);
+  },
   onCorrect: async ({ text, level, segments, context }) => {
     const cfg = store.settings.correction;
     const keys = await correctionKeys();
@@ -829,7 +848,7 @@ function setupIpc() {
   ipcMain.handle('settings:save', (_e, partial) => {
     const before = JSON.stringify({ t: store.effectiveTranscription(), h: store.settings.hotkeys, m: store.settings.mode, p: store.currentProvider() });
     const s = store.saveSettings(partial);
-    if (partial && partial.correction) applyLocalApi();
+    if (partial && partial.correction) { applyLocalApi(); pushExtensionSettings(); }
     const after = JSON.stringify({ t: store.effectiveTranscription(), h: s.hotkeys, m: s.mode, p: store.currentProvider() });
     if (before !== after) {
       registerHotkeys();

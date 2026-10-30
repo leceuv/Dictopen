@@ -30,6 +30,10 @@ const DEFAULTS = {
     claudeCodeModel: 'sonnet',
     reasoningEffort: 'minimal',
     level: 'ortho', // 'ortho' (orthographe, accords, ponctuation) ou 'style' (+ légère amélioration)
+    // réglages de l'extension « Dictopen pour Chrome », poussés par la liaison locale (l'extension n'a plus de réglages propres)
+    paragraphes: 'supprimer', // Follow : paragraphe non rempli supprimé en entier ('supprimer') ou seulement ses cases vides ('garder')
+    showSent: true, // volet « Envoyé à Dictopen » dans le panneau
+    directSend: false, // hors Follow : envoyer sans confirmation le texte choisi automatiquement (avertissement)
     instructions: '', // consignes ajoutées au prompt de correction (ex. formules à conserver)
     // extension « Dictopen pour Chrome » : serveur local pour la correction, et raccourci de l'extension déclenché
     // par « Corriger » quand un navigateur est au premier plan (sélection automatique dans la page)

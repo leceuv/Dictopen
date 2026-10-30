@@ -23,8 +23,10 @@ function originAcceptable(origin) {
 }
 
 class LocalApi {
-  constructor({ version, token, onCorrect, log }) {
+  constructor({ version, token, onCorrect, onConnect, onSetting, log }) {
     this.version = version;
+    this.onConnect = onConnect || (() => null); // () → objet de réglages envoyé à chaque extension qui se connecte
+    this.onSetting = onSetting || (() => {}); // (objet) : réglage modifié depuis le panneau de l'extension
     this.token = token || '';
     this.onCorrect = onCorrect; // async ({ text, level, segments }) → { text, ms }
     this.log = log || console.log;
@@ -80,8 +82,15 @@ class LocalApi {
     });
     this.wss.on('connection', (ws) => {
       this.log(`api locale : extension connectée (${this.clients})`);
+      try { const st = this.onConnect(); if (st) ws.send(JSON.stringify({ type: 'settings', ...st })); } catch {}
       ws.on('close', () => this.log(`api locale : extension déconnectée (${this.clients})`));
-      ws.on('message', (data) => { try { const m = JSON.parse(data.toString()); if (m.type === 'log') this.log(`extension : ${String(m.text).slice(0, 500)}`); } catch {} });
+      ws.on('message', (data) => {
+        try {
+          const m = JSON.parse(data.toString());
+          if (m.type === 'log') this.log(`extension : ${String(m.text).slice(0, 500)}`);
+          else if (m.type === 'setting' && m.settings && typeof m.settings === 'object') this.onSetting(m.settings);
+        } catch {}
+      });
       ws.on('error', () => {});
     });
     this.pingTimer = setInterval(() => { for (const c of this.wss.clients) if (c.readyState === 1) { try { c.send('{"type":"ping"}'); } catch {} } }, 20000);

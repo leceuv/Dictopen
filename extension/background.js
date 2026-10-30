@@ -87,6 +87,16 @@ async function connecter() {
   ws.onopen = () => { connexionEnCours = false; journal("extension prête, version " + chrome.runtime.getManifest().version); };
   ws.onmessage = async e => {
     let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === "settings") {
+      // réglages tenus dans Dictopen (Réglages → Corriger la sélection)
+      const st = {};
+      if (msg.niveau === "ortho" || msg.niveau === "style") st.niveau = msg.niveau;
+      if (msg.paragraphes === "supprimer" || msg.paragraphes === "garder") st.paragraphes = msg.paragraphes;
+      if (typeof msg.afficherEnvoi === "boolean") st.afficherEnvoi = msg.afficherEnvoi;
+      if (typeof msg.envoiDirect === "boolean") st.envoiDirect = msg.envoiDirect;
+      await chrome.storage.local.set(st);
+      return;
+    }
     if (msg.type !== "correct") return;
     try {
       let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -156,7 +166,10 @@ chrome.runtime.onMessage.addListener((msg, sender, repondre) => {
   if (msg.type === "confirmer" && sender.tab?.id != null) {
     const tabId = sender.tab.id, cle = "confirmation_" + tabId;
     (async () => {
-      if (msg.toujours) await chrome.storage.local.set({ envoiDirect: true });
+      if (msg.toujours) {
+        await chrome.storage.local.set({ envoiDirect: true });
+        try { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "setting", settings: { envoiDirect: true } })); } catch {} // tenu dans Dictopen
+      }
       const p = (await chrome.storage.session.get(cle))[cle];
       await chrome.storage.session.remove(cle);
       if (msg.annuler) return;

@@ -4,13 +4,7 @@ const DEFAUTS = { niveau: "ortho", paragraphes: "supprimer", port: 47395, affich
 const jetonInstalle = typeof self.DICTOPEN_TOKEN === "string" && self.DICTOPEN_TOKEN ? self.DICTOPEN_TOKEN : "";
 
 chrome.storage.local.get(DEFAUTS).then(r => {
-  for (const nom of ["niveau", "paragraphes"]) {
-    const el = document.querySelector(`input[name="${nom}"][value="${r[nom]}"]`);
-    if (el) el.checked = true;
-  }
   document.getElementById("port").value = r.port;
-  document.getElementById("afficherEnvoi").checked = !!r.afficherEnvoi;
-  document.getElementById("envoiDirect").checked = !!r.envoiDirect;
   const jeton = document.getElementById("jeton");
   jeton.value = r.jeton || "";
   if (jetonInstalle) {

@@ -141,8 +141,16 @@
   $('k_effort').value = settings.correction.reasoningEffort || 'minimal';
   $('k_level').value = settings.correction.level || 'ortho';
   $('k_instructions').value = settings.correction.instructions || '';
-  const saveCorrection = () => { showProvider(); return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value } }); };
-  for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions']) $(id).addEventListener('change', saveCorrection);
+  const renderExt = () => {
+    $('k_paragraphes').value = settings.correction.paragraphes === 'garder' ? 'garder' : 'supprimer';
+    $('k_showSent').checked = settings.correction.showSent !== false;
+    $('k_directSend').checked = !!settings.correction.directSend;
+    $('k_directSendWarn').style.display = $('k_directSend').checked ? '' : 'none';
+  };
+  renderExt();
+  api.onSettingsChanged((s) => { settings = s; renderExt(); });
+  const saveCorrection = () => { showProvider(); $('k_directSendWarn').style.display = $('k_directSend').checked ? '' : 'none'; return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value, paragraphes: $('k_paragraphes').value, showSent: $('k_showSent').checked, directSend: $('k_directSend').checked } }); };
+  for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions', 'k_paragraphes', 'k_showSent', 'k_directSend']) $(id).addEventListener('change', saveCorrection);
   // clé Anthropic
   const refreshAKey = async () => { $('akeyMasked').textContent = (await api.getApiKeyMasked('anthropic')) || 'aucune'; };
   refreshAKey();
@@ -279,6 +287,19 @@
 
   $('launchAtLogin').checked = settings.launchAtLogin !== false;
   $('launchAtLogin').addEventListener('change', () => save({ launchAtLogin: $('launchAtLogin').checked }));
+
+  // textes explicatifs repliés : bouton « ? » dans le titre de chaque section qui en contient
+  for (const sec of document.querySelectorAll('section')) {
+    const textes = [...sec.querySelectorAll(':scope > p.hint')].filter((p) => !p.id && !p.classList.contains('warn'));
+    if (!textes.length) continue;
+    for (const p of textes) p.classList.add('help-text');
+    const h2 = sec.querySelector('h2');
+    if (!h2) continue;
+    const b = document.createElement('button');
+    b.className = 'help secondary'; b.type = 'button'; b.textContent = '?'; b.title = 'Explications';
+    b.addEventListener('click', () => sec.classList.toggle('help-open'));
+    h2.appendChild(b);
+  }
 
   $('quit').addEventListener('click', () => api.quit());
 })();

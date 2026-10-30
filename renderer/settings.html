@@ -21,6 +21,12 @@
   button { font:inherit; border:0; border-radius:7px; padding:6px 12px; background:var(--accent); color:#fff; cursor:pointer; }
   button.secondary { background:var(--line); color:var(--fg); }
   .hint { color:var(--muted); font-size:12px; margin:4px 0 0; }
+  section h2 { display:flex; align-items:center; gap:8px; }
+  button.help { width:20px; height:20px; padding:0; border-radius:50%; background:var(--line); color:var(--muted); font-size:12px; font-weight:700; line-height:20px; }
+  section.help-open button.help { background:var(--accent); color:#fff; }
+  section p.hint.help-text { display:none; }
+  section.help-open p.hint.help-text { display:block; }
+  .warn { color:#d14343; }
   .ok { color:#2a9d6a; } .ko { color:#d14343; }
   table { border-collapse:collapse; width:100%; }
   td { padding:4px 6px; border-bottom:1px solid var(--line); }
@@ -138,6 +144,12 @@
       <select id="k_effort"><option value="minimal">minimal (plus rapide)</option><option value="low">bas</option><option value="medium">moyen</option></select></div>
     <div class="row"><label>Consignes supplémentaires</label></div>
     <textarea id="k_instructions" placeholder="Facultatif : ex. « conserver les abréviations ATCD, TDM, IRM », « ne pas toucher aux formules de politesse »…"></textarea>
+    <div class="row"><label>Paragraphes non remplis (Follow)</label>
+      <select id="k_paragraphes"><option value="supprimer">supprimer le paragraphe entier</option><option value="garder">garder le texte, retirer seulement les cases vides</option></select></div>
+    <p class="hint">Paragraphe non rempli : au moins une case vide et aucune réponse (tapée ou cochée). Les données du dossier (elle, patient·e…) ne comptent pas comme réponses.</p>
+    <div class="row"><label>Afficher dans le panneau le texte exact envoyé</label><input type="checkbox" id="k_showSent"><span class="hint">vérification de confidentialité</span></div>
+    <div class="row"><label>Hors Follow : envoyer sans vérification le texte choisi automatiquement</label><input type="checkbox" id="k_directSend"></div>
+    <p class="hint warn" id="k_directSendWarn" style="display:none"><b>Avertissement :</b> avec cette option, un texte que vous n'avez pas vu (champ actif, plus grand éditeur de la page) part vers le modèle dès que vous cliquez « Corriger » avec le navigateur devant. Il peut contenir un nom de patient ou d'autres données identifiantes que le masquage n'a pas reconnues ; vous en assumez la responsabilité (secret médical, RGPD).</p>
   </section>
 
   <section>
