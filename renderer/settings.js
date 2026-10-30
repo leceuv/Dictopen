@@ -320,7 +320,7 @@
     const html = p.innerHTML;
     p.classList.add('help-text');
     const b = document.createElement('button');
-    b.className = 'help secondary'; b.type = 'button'; b.textContent = '?'; b.title = 'Explication';
+    b.className = 'help secondary'; b.type = 'button'; b.textContent = '?';
     anchorFor(p).appendChild(b);
     // survol : apparition et disparition immédiates ; clic : la bulle reste jusqu'au prochain clic
     b.addEventListener('mouseenter', () => { if (!pinned) showPopover(b, html); });
