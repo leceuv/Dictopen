@@ -16,7 +16,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@electron/packager": "^18.3.0",
+    "@electron/packager": "^20.3.0",
     "electron": "^45.0.0",
     "png-to-ico": "^2.1.8"
   },
