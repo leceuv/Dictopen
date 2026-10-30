@@ -56,6 +56,22 @@ const SILENCE_PEAK = 0.04; // en dessous : pas de parole (bruit de fond)
 // distribuée ; à n'utiliser que sur un poste de développement, puis supprimer le dossier.
 // ---------------------------------------------------------------------------------------------------------------
 const RECORD_DICTATIONS = !!process.env.DICTOPEN_RECORD_DICTATIONS;
+
+// Audit des envois (VÉRIFICATION TEMPORAIRE, hors interface) : activé par la présence du fichier <userData>/audit-envois.on.
+// Écrit dans <userData>/audit-envois/AAAA-MM-JJ.jsonl le texte EXACTEMENT tel qu'il part vers le modèle (après
+// pseudonymisation), jamais le texte d'origine, pour vérifier sur une période d'usage réel que rien d'identifiant ne sort.
+// Local seulement ; à désactiver puis supprimer après l'analyse.
+let AUDIT_ENVOIS = false;
+function auditEnvoi(entry) {
+  if (!AUDIT_ENVOIS) return;
+  try {
+    const fs = require('fs');
+    const dir = path.join(app.getPath('userData'), 'audit-envois');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = path.join(dir, new Date().toISOString().slice(0, 10) + '.jsonl');
+    fs.appendFileSync(file, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n', { mode: 0o600 });
+  } catch (e) { console.warn('audit envois', e.message); }
+}
 let lastSample = null;
 function saveDictationSample({ pcm, seconds, provider, model, transcript }) {
   try {
@@ -593,6 +609,7 @@ async function correctSelection() {
     const t0 = Date.now();
     // identifiants reconnus (nom après civilité, date de naissance, NIR, téléphone…) masqués avant l'envoi, restaurés après
     const masque = pseudonymiser(original);
+    auditEnvoi({ canal: 'bureau', correcteur: cfg.provider || 'openai', masques: masque.donnees.map((d) => d.type || '?'), texte: masque.texte });
     if (masque.donnees.length) console.log(`correction : ${masque.donnees.length} identifiant(s) masqué(s) (${masque.types.join(', ')})`);
     const r = await correctText(keys, cfg, masque.texte, { level: cfg.level });
     if (!r.text) throw new Error('Correction : réponse vide');
@@ -648,6 +665,7 @@ const localApi = new LocalApi({
     const t0 = Date.now();
     // l'extension masque déjà les identifiants ; second passage ici par précaution (sans effet si rien ne reste)
     const masque = pseudonymiser(text);
+    auditEnvoi({ canal: segments ? 'extension-follow' : 'extension', correcteur: cfg.provider || 'openai', masques: masque.donnees.map((d) => d.type || '?'), contexte: context || '', texte: masque.texte });
     const r = await correctText(keys, cfg, masque.texte, { level, segments, context });
     const rest = restaurer(r.text, masque.donnees);
     if (rest.manquants.length) throw new Error(`réponse incomplète (marqueur ${rest.manquants[0]} absent)`);
@@ -711,6 +729,7 @@ async function rediger() {
   const cfg = store.settings.courrier;
   console.log(`rédaction : ${draft.length} caractères de dictée${lastLetter ? ' + courrier précédent' : ''} (${cfg.draftModel})`);
   try {
+    auditEnvoi({ canal: 'courrier', correcteur: 'openai/' + cfg.draftModel, masques: [], texte: (lastLetter ? `[courrier précédent]\n${lastLetter}\n[dictée]\n` : '') + draft });
     const r = await writeLetter(key, cfg, { dictation: draft, previousLetter: lastLetter });
     if (!r.text) throw new Error('réponse vide');
     const usage = store.addUsage({ letters: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(cfg.draftModel, r.inputTokens, r.outputTokens) });
@@ -1032,6 +1051,8 @@ function setupLogging() {
 app.whenReady().then(() => {
   setupLogging();
   store = new Store();
+  try { AUDIT_ENVOIS = require('fs').existsSync(path.join(app.getPath('userData'), 'audit-envois.on')); } catch {}
+  if (AUDIT_ENVOIS) console.log('audit des envois ACTIF (vérification temporaire) : ' + path.join(app.getPath('userData'), 'audit-envois'));
   setupHidPermissions();
   setupIpc();
   try { if (app.dock) app.dock.show(); } catch (e) { console.warn('dock', e.message); }
