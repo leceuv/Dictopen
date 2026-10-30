@@ -37,10 +37,20 @@
     <legend>Dictopen</legend>
     <label>Port du serveur local : <input type="text" name="port" id="port"></label>
     <small>Le même que dans Dictopen → Réglages → Corriger la sélection (47395 par défaut).</small>
+    <label>Jeton de l'API locale : <input type="text" id="jeton" spellcheck="false" autocomplete="off" style="width:100%;font-family:ui-monospace,monospace"></label>
+    <small id="jetonInfo">Secret partagé avec Dictopen : il prouve que c'est bien l'extension qui demande une correction, et bien Dictopen qui répond. Installée par le bouton de Dictopen, l'extension le reçoit automatiquement ; sinon copiez-le depuis Dictopen → Réglages → Corriger la sélection.</small>
     <label><input type="checkbox" name="afficherEnvoi" id="afficherEnvoi"> Afficher dans le panneau le texte exact envoyé (vérification de confidentialité)</label>
   </fieldset>
 
+  <fieldset>
+    <legend>Confidentialité (hors Follow)</legend>
+    <small>Les identifiants reconnus (nom après une civilité, date de naissance, numéro de sécurité sociale, téléphone, courriel, adresse) sont masqués localement par des marqueurs [ID…] avant l'envoi, puis restitués. Ce masquage est heuristique : un prénom seul ou un nom sans civilité passent. Quand aucun texte n'est sélectionné et que l'extension choisit elle-même le champ à relire, elle vous montre d'abord ce qui va partir.</small>
+    <label><input type="checkbox" name="envoiDirect" id="envoiDirect"> Toujours envoyer sans cette vérification</label>
+    <small style="color:#a1231b"><b>Avertissement :</b> avec cette option, un texte que vous n'avez pas vu (le plus grand éditeur de la page, un champ actif…) part vers le modèle (OpenAI ou Anthropic) via Dictopen dès que vous cliquez « Corriger » avec le navigateur devant. Il peut contenir un nom de patient ou d'autres données de santé identifiantes que le masquage n'a pas reconnues. Vous en assumez la responsabilité au regard du secret médical et du RGPD.</small>
+  </fieldset>
+
   <p>Raccourci clavier : <b>Alt+Maj+C</b> (modifiable dans <code>chrome://extensions/shortcuts</code>).<span id="ok"></span></p>
+  <script src="config.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

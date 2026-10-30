@@ -2,6 +2,7 @@
 // Réglages (JSON lisible), clé API (chiffrée par safeStorage = trousseau macOS) et compteur de consommation.
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { app, safeStorage } = require('electron');
 
 const DEFAULTS = {
@@ -247,6 +248,27 @@ class Store {
     } catch {
       return '';
     }
+  }
+
+  // --- jeton de l'API locale ---
+  // Secret partagé avec l'extension de navigateur : prouve de chaque côté qu'on parle bien à Dictopen / à l'extension
+  // (un processus local ne peut pas se faire passer pour l'extension, ni occuper le port à sa place).
+  // 32 octets aléatoires en hexadécimal, fichier lisible par l'utilisateur seul ; créé au premier besoin.
+  localApiToken() {
+    const file = path.join(this.dir, 'local-api-token');
+    try {
+      const t = fs.readFileSync(file, 'utf8').trim();
+      if (/^[0-9a-f]{64}$/.test(t)) return t;
+    } catch {}
+    return this.regenerateLocalApiToken();
+  }
+
+  regenerateLocalApiToken() {
+    const file = path.join(this.dir, 'local-api-token');
+    const t = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(file, t + '\n', { mode: 0o600 });
+    try { fs.chmodSync(file, 0o600); } catch {}
+    return t;
   }
 
   // --- consommation ---

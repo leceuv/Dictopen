@@ -515,6 +515,9 @@
       case "attente":
         if (window === top) panneau().attente(msg.original);
         break;
+      case "confirmer":
+        if (window === top) panneau().confirmer(msg);
+        break;
       case "resultat":
         if (window === top) panneau().resultat(msg);
         break;
@@ -695,6 +698,37 @@
         corps.innerHTML = '<span class="rond"></span>Relecture en cours…';
         barre.replaceChildren();
         bouton("Fermer", fermer);
+      },
+      // Texte choisi automatiquement hors Follow : montrer ce qui va partir (identifiants masqués) avant d'envoyer
+      confirmer({ texte, types, site }) {
+        retirerDev();
+        racine.querySelector(".aide")?.remove();
+        corps.contentEditable = "false";
+        info.textContent = "à vérifier avant envoi";
+        const avis = message(
+          `Aucun texte n'était sélectionné : l'extension a choisi le champ ci-dessous${site ? ` (${site})` : ""}. ` +
+          (types?.length
+            ? `Identifiants masqués automatiquement : ${types.join(", ")} (marqueurs [ID…], restitués après correction). `
+            : "Aucun identifiant reconnu automatiquement. ") +
+          "Vérifiez qu'il ne reste ni nom de patient ni autre donnée identifiante : ce texte partira vers le modèle (OpenAI ou Anthropic) via Dictopen."
+        );
+        const zone = document.createElement("div");
+        zone.style.cssText = "margin-top:8px;padding:8px;border:1px solid var(--bord);border-radius:8px;max-height:40vh;overflow:auto;white-space:pre-wrap;";
+        zone.textContent = texte;
+        const option = document.createElement("label");
+        option.style.cssText = "display:block;margin-top:10px;font-size:12px;color:var(--del-t);cursor:pointer;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.style.marginRight = "6px";
+        option.append(cb, document.createTextNode("Toujours envoyer sans cette vérification. Attention : le texte choisi automatiquement partira sans que vous l'ayez vu ; le masquage des identifiants est heuristique et peut laisser passer un nom de patient. Vous en portez la responsabilité (RGPD, secret médical). Réversible dans les options de l'extension."));
+        corps.replaceChildren(avis, zone, option);
+        barre.replaceChildren();
+        const envoyerMaintenant = bouton("Envoyer en correction", () => {
+          envoyerMaintenant.disabled = true;
+          chrome.runtime.sendMessage({ type: "confirmer", toujours: cb.checked });
+        }, true);
+        bouton("Annuler", () => { chrome.runtime.sendMessage({ type: "confirmer", annuler: true }); fermer(); });
+        envoyerMaintenant.focus();
       },
       diagnostic(texte) {
         retirerDev();

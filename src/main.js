@@ -10,6 +10,7 @@ const { pasteIntoActiveApp, pressHotkey, copySelectionNow, withTargetApp } = req
 const { audioCost, textCost } = require('./pricing');
 const { correctTranscript } = require('./corrections');
 const { wavFromPcm16 } = require('./wav');
+const { pseudonymiser, restaurer } = require('../extension/pseudo'); // masquage local des identifiants avant correction
 
 app.setName('Dictopen');
 
@@ -571,8 +572,14 @@ async function correctSelection() {
     setState('correcting');
     sendReview({ original: '', corrected: '', pending: true });
     const t0 = Date.now();
-    const r = await correctText(keys, cfg, original, { level: cfg.level });
+    // identifiants reconnus (nom après civilité, date de naissance, NIR, téléphone…) masqués avant l'envoi, restaurés après
+    const masque = pseudonymiser(original);
+    if (masque.donnees.length) console.log(`correction : ${masque.donnees.length} identifiant(s) masqué(s) (${masque.types.join(', ')})`);
+    const r = await correctText(keys, cfg, masque.texte, { level: cfg.level });
     if (!r.text) throw new Error('Correction : réponse vide');
+    const rest = restaurer(r.text, masque.donnees);
+    if (rest.manquants.length) throw new Error(`Correction : réponse incomplète (marqueur ${rest.manquants[0]} absent), relancez`);
+    r.text = rest.texte;
     const usage = store.addUsage({ corrections: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(r.model, r.inputTokens, r.outputTokens) });
     send('usage', usage);
     if (tray) tray.refresh();
@@ -601,7 +608,12 @@ const localApi = new LocalApi({
     const cfg = store.settings.correction;
     const keys = await correctionKeys();
     const t0 = Date.now();
-    const r = await correctText(keys, cfg, text, { level, segments, context });
+    // l'extension masque déjà les identifiants ; second passage ici par précaution (sans effet si rien ne reste)
+    const masque = pseudonymiser(text);
+    const r = await correctText(keys, cfg, masque.texte, { level, segments, context });
+    const rest = restaurer(r.text, masque.donnees);
+    if (rest.manquants.length) throw new Error(`réponse incomplète (marqueur ${rest.manquants[0]} absent)`);
+    r.text = rest.texte;
     const usage = store.addUsage({ corrections: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(r.model, r.inputTokens, r.outputTokens) });
     send('usage', usage);
     if (tray) tray.refresh();
@@ -615,7 +627,16 @@ async function correctionKeys() {
 
 function applyLocalApi() {
   const cfg = store.settings.correction;
-  if (cfg.localApi) localApi.start(Number(cfg.localApiPort) || 47395); else localApi.stop();
+  if (cfg.localApi) localApi.start(Number(cfg.localApiPort) || 47395, store.localApiToken()); else localApi.stop();
+}
+
+// Dossier où le bouton « Installer » dépose l'extension ; config.js y porte le jeton de l'API locale,
+// chargé par le service worker (importScripts) et la page d'options.
+const EXTENSION_DIR = () => path.join(app.getPath('userData'), 'Dictopen pour Chrome');
+function writeExtensionConfig(dest) {
+  const fs = require('fs');
+  const token = store.localApiToken();
+  fs.writeFileSync(path.join(dest, 'config.js'), `// Généré par Dictopen : jeton de l'API locale (ne pas partager)\nself.DICTOPEN_TOKEN = ${JSON.stringify(token)};\n`, { mode: 0o600 });
 }
 
 async function replaceWithReview(text) {
@@ -882,6 +903,17 @@ function setupIpc() {
     shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${pane}`);
     hidePermissionsWindowWhileUserActs();
   });
+  // jeton de l'API locale : affiché dans les réglages (installation manuelle de l'extension) ; régénéré à la demande
+  ipcMain.handle('localApi:token', () => store.localApiToken());
+  ipcMain.handle('localApi:regenerateToken', () => {
+    const fs = require('fs');
+    const token = store.regenerateLocalApiToken();
+    applyLocalApi();
+    const dest = EXTENSION_DIR();
+    if (fs.existsSync(path.join(dest, 'manifest.json'))) { try { writeExtensionConfig(dest); } catch (e) { console.warn('config.js de l’extension', e.message); } }
+    console.log('api locale : jeton régénéré');
+    return token;
+  });
   ipcMain.handle('win:settings', openSettings);
   ipcMain.handle('win:hideBar', () => { if (barWin) barWin.hide(); if (tray) tray.refresh(); });
   ipcMain.handle('app:quit', () => app.quit());
@@ -889,9 +921,10 @@ function setupIpc() {
   ipcMain.handle('extension:install', async () => {
     const fs = require('fs');
     const src = path.join(__dirname, '..', 'extension');
-    const dest = path.join(app.getPath('userData'), 'Dictopen pour Chrome');
+    const dest = EXTENSION_DIR();
     fs.mkdirSync(dest, { recursive: true });
-    for (const f of fs.readdirSync(src)) fs.writeFileSync(path.join(dest, f), fs.readFileSync(path.join(src, f)));
+    for (const f of fs.readdirSync(src)) { if (f === 'config.js') continue; fs.writeFileSync(path.join(dest, f), fs.readFileSync(path.join(src, f))); }
+    writeExtensionConfig(dest);
     shell.showItemInFolder(path.join(dest, 'manifest.json'));
     const { execFile } = require('child_process');
     if (process.platform === 'darwin') {

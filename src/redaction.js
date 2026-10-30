@@ -89,6 +89,7 @@ Règles impératives :
 - Conserve la terminologie médicale et les abréviations usuelles (IRM, TDM, ATCD, HTA…) ; ne corrige que leurs fautes de frappe manifestes. Un mot sans sens remplacé par le terme médical homophone certain est une correction légitime.
 - Conserve la structure : sauts de ligne, paragraphes, listes, titres, majuscules des intitulés. Garde exactement le même nombre de lignes que l'original : n'ajoute jamais de ligne vide entre les paragraphes et n'en supprime pas.
 - N'ajoute aucune information, aucun commentaire, aucune explication.
+- Les marqueurs [ID1], [ID2]… remplacent des données d'identité masquées (nom, date de naissance, numéro…) : recopie chacun tel quel, à sa place, sans le modifier, le compléter ni le supprimer.
 - En cas de doute sur une correction, laisse le texte tel quel.`;
 
 const CORRECTION_LEVELS = {

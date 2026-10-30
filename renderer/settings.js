@@ -99,6 +99,21 @@
     $('extSteps').innerHTML = `Dans la page des extensions qui vient de s'ouvrir (sinon tapez <code>chrome://extensions</code>) : 1. activez <b>Mode développeur</b> (en haut à droite) ; 2. cliquez <b>Charger l'extension non empaquetée</b> ; 3. choisissez le dossier montré dans le ${api.platform === 'darwin' ? 'Finder' : 'l’Explorateur'} (${mod} pour coller son chemin). C'est tout : l'extension se connecte à Dictopen toute seule. Pour une mise à jour, recliquez ici puis ↻ sur l'extension.`;
   });
 
+  // jeton de l'API locale (partagé avec l'extension) : affiché masqué, copie, régénération
+  const showToken = (t) => { $('extToken').value = t ? `${t.slice(0, 6)}…${t.slice(-4)}` : ''; $('extToken').title = t || ''; };
+  showToken(await api.getLocalApiToken());
+  $('extTokenCopy').addEventListener('click', async () => {
+    const t = await api.getLocalApiToken();
+    await api.reviewCopy(t);
+    $('extTokenResult').textContent = 'Jeton copié : collez-le dans les options de l’extension.';
+  });
+  $('extTokenNew').addEventListener('click', async () => {
+    if (!confirm('Régénérer le jeton ? Les extensions installées devront être mises à jour (bouton « Installer » puis ↻ dans Chrome, ou coller le nouveau jeton).')) return;
+    showToken(await api.regenerateLocalApiToken());
+    $('extTokenResult').textContent = 'Nouveau jeton. Recliquez « Installer » (ou recollez-le) puis rechargez l’extension.';
+    showSaved();
+  });
+
   // --- courrier ---
   $('c_model').value = settings.courrier.transcriptionModel;
   $('c_delay').value = settings.courrier.delay;

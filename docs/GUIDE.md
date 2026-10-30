@@ -2,7 +2,7 @@
 
 Dictée médicale avec reconnaissance vocale OpenAI : chaque phrase dictée est collée dans l'application active (Word, Lifen, Doctolib, dossier patient…), ou bien un courrier complet est rédigé à partir de votre dictée. Compatible SpeechMike Philips (boutons et voyant rouge) ou n'importe quel micro.
 
-Chaque utilisateur utilise **sa propre clé API OpenAI** : la dictée est facturée sur son compte (environ 0,005 $ par minute de dictée avec gpt-transcribe ; un courrier rédigé ≈ 0,02 $). Aucune donnée ne transite par un autre serveur que ceux d'OpenAI.
+Chaque utilisateur utilise **sa propre clé API OpenAI** : la dictée est facturée sur son compte (environ 0,005 $ par minute de dictée avec gpt-transcribe ; un courrier rédigé ≈ 0,02 $). Aucune donnée ne transite par un serveur intermédiaire : l'audio et le texte vont directement de votre ordinateur au fournisseur du modèle (OpenAI ; pour la fonction « Corriger », Anthropic ou Claude Code si vous les choisissez dans les réglages).
 
 ## 1. Installer
 
@@ -45,7 +45,7 @@ La barre flottante reste au-dessus des autres fenêtres (déplaçable, masquable
 **Corriger un texte déjà écrit** (les deux modes)
 - Sélectionnez le texte dans n'importe quelle application (le courrier terminé, par exemple), puis ⌃⌥R ou le bouton F1 du SpeechMike.
 - Le texte est relu par GPT (orthographe, accords, concordance des temps, ponctuation, erreurs de reconnaissance évidentes) et proposé dans une fenêtre : retraits en rouge, ajouts en vert, texte modifiable ; **Remplacer** le colle à la place de la sélection.
-- Dans un logiciel web (Follow, Doctolib…) : ⚙ Réglages → *Corriger la sélection* → **Installer « Dictopen pour Chrome »…** (3 clics dans Chrome, expliqués à l'écran). Ensuite, **Corriger** avec Chrome devant : sur Follow, rien à sélectionner, l'extension prend le courrier affiché sans l'en-tête (le nom du patient n'est jamais envoyé), corrige vos réponses, retire les cases non remplies et les phrases devenues incohérentes, puis « Remplacer » réécrit le courrier dans Follow. Ailleurs, elle prend le champ de texte actif.
+- Dans un logiciel web (Follow, Doctolib…) : ⚙ Réglages → *Corriger la sélection* → **Installer « Dictopen pour Chrome »…** (3 clics dans Chrome, expliqués à l'écran). Ensuite, **Corriger** avec Chrome devant : sur Follow, rien à sélectionner, l'extension prend le courrier affiché sans l'en-tête (formule d'appel et phrase d'adressage, qui portent le nom du patient) et n'envoie que vos réponses tapées ; elle les corrige, retire les cases non remplies et les phrases devenues incohérentes, puis « Remplacer » réécrit le courrier dans Follow. Ailleurs, elle prend votre sélection, sinon le champ de texte actif en vous montrant d'abord ce qui va partir. Partout, les identifiants reconnus (nom après une civilité, date de naissance, n° de sécurité sociale, téléphone, courriel, adresse) sont masqués localement avant l'envoi et restitués après ; ce masquage est heuristique et ne remplace pas votre relecture.
 - Le correcteur se choisit dans les réglages : OpenAI (gpt-5-mini), Claude par clé API Anthropic, ou Claude par votre abonnement Pro/Max si l'application Claude est installée (aucun coût à l'usage).
 
 ## 5. Personnaliser (⚙ Réglages)

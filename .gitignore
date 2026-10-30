@@ -4,3 +4,4 @@ dist/
 icon.ico
 *.log
 .DS_Store
+extension/config.js

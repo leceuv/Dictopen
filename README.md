@@ -43,7 +43,9 @@ Structure : `src/main.js` (processus principal : état, raccourcis, IPC, collage
 
 ## Confidentialité
 
-L'audio et le texte sont envoyés directement à l'API OpenAI avec votre clé. Vérifiez les conditions applicables à votre compte (conservation des données, résidence) avant toute dictée contenant des données de santé, et n'y dictez pas d'identité de patient si vous n'avez pas ces garanties.
+L'audio et le texte sont envoyés directement à l'API OpenAI avec votre clé (pour « Corriger la sélection », à Anthropic ou à Claude Code si vous les choisissez). Vérifiez les conditions applicables à votre compte (conservation des données, résidence) avant toute dictée contenant des données de santé, et n'y dictez pas d'identité de patient si vous n'avez pas ces garanties.
+
+Pour la correction d'un texte déjà écrit (barre ou extension Chrome), les identifiants reconnus (nom après une civilité, date de naissance, n° de sécurité sociale, téléphone, courriel, adresse) sont remplacés localement par des marqueurs avant l'envoi au modèle et restitués après (`extension/pseudo.js`). Ce masquage est heuristique : il réduit le risque sans le supprimer. L'API locale utilisée par l'extension n'accepte que les requêtes porteuses d'un jeton secret propre au poste, et l'extension vérifie que c'est bien Dictopen qui lui répond avant d'envoyer du texte.
 
 ## Licence
 
