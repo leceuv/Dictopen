@@ -96,34 +96,6 @@
   </section>
 
   <section>
-    <h2>Mode Courrier</h2>
-    <div class="row"><label>Modèle OpenAI</label>
-      <select id="c_model">
-        <option value="gpt-transcribe">gpt-transcribe (0,0045 $/min, recommandé)</option>
-        <option value="gpt-live-transcribe">gpt-live-transcribe (texte en direct, 0,017 $/min)</option>
-        <option value="gpt-4o-transcribe">gpt-4o-transcribe (~0,006 $/min)</option>
-        <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (~0,003 $/min)</option>
-      </select></div>
-    <div class="row" id="c_delayRow"><label>Réactivité (gpt-live-transcribe)</label>
-      <select id="c_delay"><option value="minimal">minimale</option><option value="low">basse</option><option value="medium">moyenne</option><option value="high">haute</option><option value="xhigh">très haute</option></select></div>
-    <div class="row"><label>Bouton Record du SpeechMike</label>
-      <select id="c_record"><option value="toggle">marche / arrêt</option><option value="pressed">appuyer-parler (maintenu)</option></select></div>
-    <div class="row"><label>Modèle de rédaction</label>
-      <select id="c_draft">
-        <option value="gpt-5">gpt-5 (qualité, 1,25 / 10 $ par M jetons ≈ 0,02 $ par courrier)</option>
-        <option value="gpt-5-mini">gpt-5-mini (0,25 / 2 $ ≈ 0,004 $ par courrier)</option>
-        <option value="gpt-5-nano">gpt-5-nano (très économique)</option>
-        <option value="gpt-4.1">gpt-4.1 (2 / 8 $)</option>
-        <option value="gpt-4.1-mini">gpt-4.1-mini (0,40 / 1,60 $)</option>
-      </select></div>
-    <div class="row"><label>Effort de raisonnement (gpt-5)</label>
-      <select id="c_effort"><option value="minimal">minimal (plus rapide)</option><option value="low">bas</option><option value="medium">moyen</option><option value="high">élevé (lent)</option></select></div>
-    <div class="row"><label>Prompt maître</label><button class="secondary" id="c_promptDefault">Remettre le prompt par défaut</button></div>
-    <textarea id="c_prompt" placeholder="Vide = prompt générique (courrier médical). Collez ici votre propre prompt : spécialité, nom pour la signature, formules habituelles, vocabulaire, corrections de dictée fréquentes…"></textarea>
-    <p class="hint">La date du jour est ajoutée automatiquement. Après un courrier, une nouvelle dictée + « Rédiger » = correction du courrier précédent (repris en entier). « Nouveau » repart de zéro.</p>
-  </section>
-
-  <section>
     <h2>Corriger la sélection</h2>
     <p class="hint">Sélectionnez un texte déjà écrit dans n'importe quelle application (Word, TextEdit, messagerie…), puis cliquez <b>Corriger</b> dans la barre (ou ⌃⌥R, ou F1 du SpeechMike) : le texte est relu (orthographe, accords, concordance des temps, ponctuation), proposé dans un panneau avec les différences (rouge = retiré, vert = ajouté, texte modifiable), puis <b>Remplacer</b> le recolle à sa place. Rien n'est reformulé ni ajouté.</p>
     <div class="row"><label>Extension Chrome</label><button class="secondary" id="extInstall">Installer « Dictopen pour Chrome »…</button><span class="hint" id="extResult"></span></div>
@@ -163,6 +135,35 @@
     <div class="row"><label>Consignes supplémentaires</label></div>
     <textarea id="k_instructions" placeholder="Facultatif : ex. « conserver les abréviations ATCD, TDM, IRM », « ne pas toucher aux formules de politesse »…"></textarea>
   </section>
+
+  <section>
+    <h2>Mode Courrier</h2>
+    <div class="row"><label>Modèle OpenAI</label>
+      <select id="c_model">
+        <option value="gpt-transcribe">gpt-transcribe (0,0045 $/min, recommandé)</option>
+        <option value="gpt-live-transcribe">gpt-live-transcribe (texte en direct, 0,017 $/min)</option>
+        <option value="gpt-4o-transcribe">gpt-4o-transcribe (~0,006 $/min)</option>
+        <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (~0,003 $/min)</option>
+      </select></div>
+    <div class="row" id="c_delayRow"><label>Réactivité (gpt-live-transcribe)</label>
+      <select id="c_delay"><option value="minimal">minimale</option><option value="low">basse</option><option value="medium">moyenne</option><option value="high">haute</option><option value="xhigh">très haute</option></select></div>
+    <div class="row"><label>Bouton Record du SpeechMike</label>
+      <select id="c_record"><option value="toggle">marche / arrêt</option><option value="pressed">appuyer-parler (maintenu)</option></select></div>
+    <div class="row"><label>Modèle de rédaction</label>
+      <select id="c_draft">
+        <option value="gpt-5">gpt-5 (qualité, 1,25 / 10 $ par M jetons ≈ 0,02 $ par courrier)</option>
+        <option value="gpt-5-mini">gpt-5-mini (0,25 / 2 $ ≈ 0,004 $ par courrier)</option>
+        <option value="gpt-5-nano">gpt-5-nano (très économique)</option>
+        <option value="gpt-4.1">gpt-4.1 (2 / 8 $)</option>
+        <option value="gpt-4.1-mini">gpt-4.1-mini (0,40 / 1,60 $)</option>
+      </select></div>
+    <div class="row"><label>Effort de raisonnement (gpt-5)</label>
+      <select id="c_effort"><option value="minimal">minimal (plus rapide)</option><option value="low">bas</option><option value="medium">moyen</option><option value="high">élevé (lent)</option></select></div>
+    <div class="row"><label>Prompt maître</label><button class="secondary" id="c_promptDefault">Remettre le prompt par défaut</button></div>
+    <textarea id="c_prompt" placeholder="Vide = prompt générique (courrier médical). Collez ici votre propre prompt : spécialité, nom pour la signature, formules habituelles, vocabulaire, corrections de dictée fréquentes…"></textarea>
+    <p class="hint">La date du jour est ajoutée automatiquement. Après un courrier, une nouvelle dictée + « Rédiger » = correction du courrier précédent (repris en entier). « Nouveau » repart de zéro.</p>
+  </section>
+
 
 
   <section>
