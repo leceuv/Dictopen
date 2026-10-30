@@ -68,4 +68,5 @@ contextBridge.exposeInMainWorld('dictee', {
   openSettings: () => ipcRenderer.invoke('win:settings'),
   hideBar: () => ipcRenderer.invoke('win:hideBar'),
   quit: () => ipcRenderer.invoke('app:quit'),
+  installExtension: () => ipcRenderer.invoke('extension:install'),
 });

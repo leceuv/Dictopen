@@ -91,6 +91,14 @@
   const saveDirect = () => save({ direct: { transcriptionModel: $('d_model').value, delay: $('d_delay').value, localPunctuation: $('d_punct').checked, recordButtonMode: $('d_record').value } });
   for (const id of ['d_model', 'd_delay', 'd_punct', 'd_record']) $(id).addEventListener('change', saveDirect);
 
+  $('extInstall').addEventListener('click', async () => {
+    const dest = await api.installExtension();
+    $('extResult').textContent = 'Dossier prêt : ' + dest;
+    const mod = api.platform === 'darwin' ? '⇧⌘G' : 'la barre d’adresse';
+    $('extSteps').style.display = '';
+    $('extSteps').innerHTML = `Dans la page des extensions qui vient de s'ouvrir (sinon tapez <code>chrome://extensions</code>) : 1. activez <b>Mode développeur</b> (en haut à droite) ; 2. cliquez <b>Charger l'extension non empaquetée</b> ; 3. choisissez le dossier montré dans le ${api.platform === 'darwin' ? 'Finder' : 'l’Explorateur'} (${mod} pour coller son chemin). C'est tout : l'extension se connecte à Dictopen toute seule. Pour une mise à jour, recliquez ici puis ↻ sur l'extension.`;
+  });
+
   // --- courrier ---
   $('c_model').value = settings.courrier.transcriptionModel;
   $('c_delay').value = settings.courrier.delay;

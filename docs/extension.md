@@ -4,8 +4,8 @@ Dans un logiciel métier en ligne (Follow, Doctolib, messagerie, tout éditeur w
 
 ## Installer (Chrome, Edge, Brave…)
 
-1. Récupérez le dossier `extension` du dépôt (ou de l'archive de la version).
-2. Ouvrez `chrome://extensions`, activez **Mode développeur** (en haut à droite), cliquez **Charger l'extension non empaquetée** et choisissez ce dossier.
+1. Dictopen → ⚙ Réglages → *Mode Dictée directe* → **Installer « Dictopen pour Chrome »…** : le dossier de l'extension est préparé et montré, la page des extensions s'ouvre (sinon : le dossier `extension` du dépôt).
+2. Dans `chrome://extensions`, activez **Mode développeur** (en haut à droite), cliquez **Charger l'extension non empaquetée** et choisissez ce dossier.
 3. Dans Dictopen → ⚙ Réglages → *Corriger la sélection*, vérifiez que **Extension « Dictopen pour Chrome »** est cochée (port 47395).
 
 ## Utiliser

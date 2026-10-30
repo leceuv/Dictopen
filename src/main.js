@@ -359,7 +359,7 @@ async function ensureConnected() {
 
 rt.on('delta', ({ text }) => send('liveText', { text, final: false }));
 rt.on('error', (err) => notice('error', `OpenAI : ${err.message}`));
-rt.on('status', (s) => { if (s === 'disconnected' && state !== 'idle' && !recording) setState('idle'); });
+rt.on('status', (s) => { if ((s === 'disconnected' || s === 'connected') && state === 'connecting' && !recording) setState('idle'); });
 
 // LED d'enregistrement : rapport(s) de sortie définis dans settings.led { on: [{reportId,data}], off: [...] }
 function setRecordLed(on) {
@@ -885,6 +885,25 @@ function setupIpc() {
   ipcMain.handle('win:settings', openSettings);
   ipcMain.handle('win:hideBar', () => { if (barWin) barWin.hide(); if (tray) tray.refresh(); });
   ipcMain.handle('app:quit', () => app.quit());
+  // extension « Dictopen pour Chrome » : copiée hors de l'application (Chrome ne lit pas dans l'archive asar), dossier montré, page des extensions ouverte
+  ipcMain.handle('extension:install', async () => {
+    const fs = require('fs');
+    const src = path.join(__dirname, '..', 'extension');
+    const dest = path.join(app.getPath('userData'), 'Dictopen pour Chrome');
+    fs.mkdirSync(dest, { recursive: true });
+    for (const f of fs.readdirSync(src)) fs.writeFileSync(path.join(dest, f), fs.readFileSync(path.join(src, f)));
+    shell.showItemInFolder(path.join(dest, 'manifest.json'));
+    const { execFile } = require('child_process');
+    if (process.platform === 'darwin') {
+      for (const browser of ['Google Chrome', 'Microsoft Edge', 'Brave Browser', 'Chromium']) {
+        if (fs.existsSync(`/Applications/${browser}.app`)) { execFile('open', ['-a', browser, browser === 'Microsoft Edge' ? 'edge://extensions' : 'chrome://extensions'], () => {}); break; }
+      }
+    } else if (process.platform === 'win32') {
+      execFile('cmd.exe', ['/c', 'start', '', 'chrome', 'chrome://extensions'], { windowsHide: true }, () => {});
+    }
+    console.log(`extension copiée dans ${dest}`);
+    return dest;
+  });
 }
 
 // --- WebHID : autoriser le SpeechMike sans boîte de dialogue ---
