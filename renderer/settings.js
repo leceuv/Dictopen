@@ -126,10 +126,8 @@
   $('k_effort').value = settings.correction.reasoningEffort || 'minimal';
   $('k_level').value = settings.correction.level || 'ortho';
   $('k_instructions').value = settings.correction.instructions || '';
-  $('k_localApi').checked = settings.correction.localApi !== false;
-  $('k_port').value = settings.correction.localApiPort || 47395;
-  const saveCorrection = () => { showProvider(); return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value, localApi: $('k_localApi').checked, localApiPort: Math.max(1024, parseInt($('k_port').value, 10) || 47395) } }); };
-  for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions', 'k_localApi', 'k_port']) $(id).addEventListener('change', saveCorrection);
+  const saveCorrection = () => { showProvider(); return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value } }); };
+  for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions']) $(id).addEventListener('change', saveCorrection);
   // clé Anthropic
   const refreshAKey = async () => { $('akeyMasked').textContent = (await api.getApiKeyMasked('anthropic')) || 'aucune'; };
   refreshAKey();
