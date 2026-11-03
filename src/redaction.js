@@ -101,12 +101,13 @@ Corrige les fautes d'orthographe, d'accord, de conjugaison, de ponctuation et de
 
 const CORRECTION_SEGMENTS = `Le texte est découpé en balises <s1>…</s1>, <s2>…</s2>, etc. : chaque segment est une réponse saisie librement, extraite d'un courrier dont le reste n'est pas à relire. Corrige chaque segment indépendamment, sans rien déplacer d'un segment à l'autre, et recopie toutes les balises à l'identique, dans le même ordre, y compris pour les segments sans correction. Ne mets rien hors des balises.
 Contexte des segments : « milieu » (<s2 milieu>) signifie que la phrase a commencé avant le segment (après un mot ou une virgule) : pas de majuscule initiale, sauf nom propre ou sigle. « suite » signifie que la phrase continue après le segment : n'ajoute pas de point final. Sans « milieu », le segment commence une phrase.
-Balises <p1>…</p1>, <p2>…</p2> : paragraphe entier d'un courrier type dont certaines cases n'ont pas été remplies, signalées par [vide]. Réécris le paragraphe selon ces règles strictes :
+Balises <p1>…</p1>, <p2>…</p2> : paragraphe entier d'un courrier type contenant des cases. Marqueurs : [vide] = case non remplie ; [L1], [L2]… = réponses déjà saisies (elles sont corrigées à part dans les segments <s1>, <s2>… de même numéro) ; [C1], [C2]… = réponses cochées, dont le contenu est rappelé entre parenthèses sous le paragraphe UNIQUEMENT pour que tu juges la cohérence : ne recopie jamais ce contenu ni cette ligne dans le paragraphe, le marqueur [Cn] seul le représente ; [D1], [D2]… = données du dossier. Réécris le paragraphe selon ces règles strictes :
 1. Toute phrase, proposition ou membre de phrase dont le sens dépendait d'une case [vide] est supprimé en entier (du début de la phrase jusqu'au point, ou de la virgule précédente à la suivante). Par exemple « L'élévation antérieure atteint [vide]° en passif et [vide]° en actif, la rotation externe est de [vide]° et la rotation interne [vide]. Le testing de la coiffe [vide] » disparaît intégralement : il ne doit rester ni « atteint », ni « est de », ni « en passif », ni « Le testing de la coiffe ».
 2. Une case [vide] placée seule (sans phrase autour) est simplement retirée.
-3. Tout ce qui ne dépend d'aucune case vide est conservé intégralement et corrigé comme les segments.
-4. Le résultat doit se lire comme un paragraphe complet et naturel : aucune phrase tronquée, aucune ponctuation orpheline, aucun mot sans complément. Relis-le avant de répondre.
-Les marqueurs [D1], [D2]… sont des données du dossier à recopier tels quels, à leur place. Ne garde aucun marqueur [vide]. Recopie les balises <pN> à l'identique.`;
+3. Les marqueurs [L…], [C…] et [D…] sont conservés tous, tels quels, dans le même ordre et à leur place, avec le texte qui les entoure s'il reste cohérent ; ne les retire jamais, ne les déplace pas, ne les modifie pas.
+4. Tout ce qui ne dépend d'aucune case vide est conservé intégralement et corrigé comme les segments.
+5. Le résultat doit se lire comme un paragraphe complet et naturel : aucune phrase tronquée, aucune ponctuation orpheline, aucun mot sans complément. Relis-le avant de répondre.
+Ne garde aucun marqueur [vide]. Recopie les balises <pN> à l'identique.`;
 
 const CORRECTION_OUTPUT = `Réponds uniquement par le texte corrigé, intégral, en texte brut, sans Markdown ni commentaire. S'il n'y a rien à corriger, renvoie le texte à l'identique.`;
 

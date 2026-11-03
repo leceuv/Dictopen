@@ -216,7 +216,7 @@
           if (t === "libre" && /\p{L}/u.test(s)) pousser("libre", lignesVides(s), v.getAttribute("data-key"));
           else if (t === "vide") pousser("vide", s, v.getAttribute("data-key"));
           else if (t === "donnee") pousser("donnee", s.replace(/\n/g, " "), v.getAttribute("data-key"));
-          else pousser("fixe", s.replace(/\n/g, " "));
+          else pousser("coche", s.replace(/\n/g, " "), v.getAttribute("data-key")); // réponse cochée : variable conservée, non relue
           continue;
         }
         const fin = n === range.endContainer ? range.endOffset : n.data.length;
