@@ -29,6 +29,13 @@
     <small id="jetonInfo">Secret partagé avec Dictopen : il prouve que c'est bien l'extension qui demande une correction, et bien Dictopen qui répond. Installée par le bouton de Dictopen, l'extension le reçoit automatiquement ; sinon copiez-le depuis Dictopen → Réglages → Corriger la sélection.</small>
   </fieldset>
 
+  <fieldset>
+    <legend>Derniers courriers corrigés (sauvegarde locale)</legend>
+    <small>Les 5 derniers textes remplacés sont gardés ici, dans le navigateur uniquement, pour les récupérer si l'enregistrement dans Follow a échoué. « Original » = texte capturé avant correction (sans l'en-tête), « Corrigé » = texte remplacé.</small>
+    <div id="historique"></div>
+    <button type="button" id="viderHistorique">Effacer cette sauvegarde</button>
+  </fieldset>
+
   <p>Raccourci clavier : <b>Alt+Maj+C</b> (modifiable dans <code>chrome://extensions/shortcuts</code>).<span id="ok"></span></p>
   <script src="config.js"></script>
   <script src="options.js"></script>

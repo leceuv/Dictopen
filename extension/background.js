@@ -212,6 +212,13 @@ chrome.runtime.onMessage.addListener((msg, sender, repondre) => {
     // (msg.ops : réponses retouchées à la main dans le panneau)
     if (op && op.frameId === frameId && (op.corrige === msg.texte || msg.ops)) {
       const ops = op.corrige === msg.texte ? op.ops : msg.ops;
+      // filet de sécurité : les 5 derniers courriers (texte capturé et texte corrigé) gardés localement dans l'extension,
+      // récupérables depuis ses options si une sauvegarde Follow échoue
+      try {
+        const { historique = [] } = await chrome.storage.local.get({ historique: [] });
+        historique.unshift({ ts: Date.now(), site: "Follow", original: op.original || "", corrige: msg.texte });
+        await chrome.storage.local.set({ historique: historique.slice(0, 5) });
+      } catch {}
       const r = await dansLaPage(tabId, frameId, remplacerVariables, [ops, op.vides, op.blocs || [], op.runs || []]);
       journal(`remplacement : ${JSON.stringify(r)} ; réponses à mettre à jour ${ops.length}, cases vides ${op.vides.length}, paragraphes supprimés ${(op.blocs || []).length}, paragraphes réécrits ${(op.runs || []).length}`);
       if (r?.ok) await chrome.storage.session.remove(cle);
@@ -223,6 +230,11 @@ chrome.runtime.onMessage.addListener((msg, sender, repondre) => {
       return { ok: false, erreur: "Sur Follow, seules vos réponses (texte entre les cases) peuvent être retouchées dans le panneau : rétablissez la proposition ou corrigez le texte fixe directement dans Follow." };
     }
     // Sinon (autre site, ou texte modifié à la main) : toute la sélection est remplacée
+    try {
+      const { historique = [] } = await chrome.storage.local.get({ historique: [] });
+      historique.unshift({ ts: Date.now(), site: "page", original: "", corrige: msg.texte });
+      await chrome.storage.local.set({ historique: historique.slice(0, 5) });
+    } catch {}
     let r = await envoyer(tabId, frameId, { type: "remplacer", texte: msg.texte });
     if (r?.slate) r = await dansLaPage(tabId, frameId, remplacerSlate, [r.debut, r.fin, msg.texte]);
     return r;
@@ -896,7 +908,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
     const runs = paras.map((q, i) => ({ bloc: q.cle, nouveau: parasCorriges[i], voids: classesDe(q) })).filter((r, i) => r.nouveau !== paras[i].s.replace(/\s*\[vide\]\s*/g, " ").replace(/[ \t]{2,}/g, " ").trim() || paras[i].items.some(it => it.t === "vide"));
     const vides = cap.parties.filter(p => p.t === "vide" && !p.sup).map(p => p.cle);
     const blocs = cap.blocsSuppr || [];
-    await chrome.storage.session.set({ ["remplacement_" + tabId]: { frameId, corrige, ops, vides, blocs, runs } });
+    await chrome.storage.session.set({ ["remplacement_" + tabId]: { frameId, corrige, ops, vides, blocs, runs, original: cap.texte } });
   } else if (/(^|\.)follow\.fr$/.test(cap.site || "")) {
     // Sécurité : sur Follow, seules les réponses tapées partent en correction. Une
     // sélection hors de l'éditeur de courrier n'est jamais envoyée telle quelle.

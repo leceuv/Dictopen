@@ -31,3 +31,30 @@ document.addEventListener("change", async e => {
   else if (el.id === "jeton") await chrome.storage.local.set({ jeton: el.value.trim() });
   enregistre();
 });
+
+
+// --- derniers courriers (filet de sécurité) ---
+async function afficherHistorique() {
+  const { historique = [] } = await chrome.storage.local.get({ historique: [] });
+  const box = document.getElementById("historique");
+  box.replaceChildren();
+  if (!historique.length) { box.textContent = "Aucun courrier enregistré."; return; }
+  for (const h of historique) {
+    const ligne = document.createElement("div");
+    ligne.style.cssText = "display:flex;gap:8px;align-items:center;margin:6px 0";
+    const date = document.createElement("span");
+    date.textContent = new Date(h.ts).toLocaleString("fr-FR") + " (" + h.site + ", " + h.corrige.length + " caractères)";
+    date.style.flex = "1";
+    const b1 = document.createElement("button"); b1.type = "button"; b1.textContent = "Copier le corrigé";
+    b1.onclick = async () => { await navigator.clipboard.writeText(h.corrige); b1.textContent = "Copié"; setTimeout(() => (b1.textContent = "Copier le corrigé"), 1500); };
+    ligne.append(date, b1);
+    if (h.original) {
+      const b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "Copier l'original";
+      b2.onclick = async () => { await navigator.clipboard.writeText(h.original); b2.textContent = "Copié"; setTimeout(() => (b2.textContent = "Copier l'original"), 1500); };
+      ligne.append(b2);
+    }
+    box.append(ligne);
+  }
+}
+document.getElementById("viderHistorique").addEventListener("click", async () => { await chrome.storage.local.set({ historique: [] }); afficherHistorique(); });
+afficherHistorique();
