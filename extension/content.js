@@ -80,6 +80,16 @@
     return v;
   }
 
+  // identifiant de question d'une variable (props React variableId = "question_<id>")
+  function questionIdDe(v) {
+    const el = v.querySelector("span[mode]") || v;
+    const cle = Object.keys(el).find(k => k.startsWith("__reactFiber") || k.startsWith("__reactInternalInstance"));
+    let f = cle && el[cle];
+    while (f && !(f.memoizedProps && "variableId" in f.memoizedProps)) f = f.return;
+    const id = f && String(f.memoizedProps.variableId);
+    return id && /^question_\d+$/.test(id) ? Number(id.slice(9)) : null;
+  }
+
   function classeVariable(v) {
     const c = v.getAttribute("data-correcteur-var");
     if (c) return c;
@@ -213,7 +223,7 @@
           const t = classeVariable(v);
           const s = texteVariable(v);
           // une réponse sans lettres (nombre, date) n'a rien à relire
-          if (t === "libre" && /\p{L}/u.test(s)) pousser("libre", lignesVides(s), v.getAttribute("data-key"));
+          if (t === "libre" && /\p{L}/u.test(s)) { pousser("libre", lignesVides(s), v.getAttribute("data-key")); parties[parties.length - 1].qid = questionIdDe(v); }
           else if (t === "vide") pousser("vide", s, v.getAttribute("data-key"));
           else if (t === "donnee") pousser("donnee", s.replace(/\n/g, " "), v.getAttribute("data-key"));
           else pousser("coche", s.replace(/\n/g, " "), v.getAttribute("data-key")); // réponse cochée : variable conservée, non relue
@@ -487,6 +497,12 @@
 
   // ---------------------------------------------------------------- messages
 
+  // Crochets de test (désactivés par défaut : réglage local devHooks=true, pages Follow seulement)
+  if (/(^|\.)follow\.fr$/.test(location.hostname)) {
+    window.addEventListener("dictopen:corriger", () => { try { chrome.runtime.sendMessage({ type: "corrigerIci" }); } catch {} });
+    window.addEventListener("dictopen:recharger", () => { try { chrome.runtime.sendMessage({ type: "rechargerExtension" }); } catch {} });
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, repondre) => {
     switch (msg.type) {
       case "sonder":
@@ -500,7 +516,7 @@
         autoDemande = false;
         // U+FEFF : caractères invisibles des variables Slate (cases bleues de Follow)
         repondre(capture
-          ? { texte: capture.envoi ?? capture.texte, parties: capture.parties, blocsSuppr: capture.blocsSuppr, contexte: capture.contexte, site: location.hostname, remplacable: capture.type === "champ" || !!capture.hote }
+          ? { texte: capture.envoi ?? capture.texte, parties: capture.parties, blocsSuppr: capture.blocsSuppr, contexte: capture.contexte, site: location.hostname, docId: new URLSearchParams(location.search).get("docId") || "", remplacable: capture.type === "champ" || !!capture.hote }
           : { texte: "" });
         break;
       case "remplacer":
@@ -522,7 +538,10 @@
         if (window === top) panneau().resultat(msg);
         break;
       case "erreur":
-        if (window === top) panneau().erreur(msg.message);
+        if (window === top) panneau().erreur(msg.message, msg.precedente);
+        break;
+      case "verification":
+        if (window === top) panneau().verification(msg);
         break;
     }
   });
@@ -688,6 +707,11 @@
       return s;
     };
 
+    // Réapplique la dernière correction enregistrée pour ce courrier (réponses dans les variables, texte fixe, cases vides)
+    const boutonPrecedente = (libelle = "Réappliquer la correction précédente") => bouton(libelle, async () => {
+      const r = await chrome.runtime.sendMessage({ type: "reappliquer", docId: new URLSearchParams(location.search).get("docId") || "" });
+      if (!r?.ok) ui.erreur(r?.erreur || "Réapplication impossible.", false);
+    });
     ui = {
       hote,
       attente() {
@@ -752,16 +776,29 @@
         barre.append(espace, statut);
         bouton("Fermer", fermer);
       },
-      erreur(texte) {
+      erreur(texte, precedente) {
         retirerDev();
         racine.querySelector(".aide")?.remove();
         corps.contentEditable = "false";
         info.textContent = "";
         corps.replaceChildren(message(texte, "err"));
         barre.replaceChildren();
+        if (precedente) boutonPrecedente();
         bouton("Fermer", fermer);
       },
-      resultat({ original, corrige, duree, remplacable, frameId, envoye, libres }) {
+      // après « Remplacer » sur Follow : résultat de la vérification des réponses enregistrées
+      verification({ message: m, echecs, precedente }) {
+        retirerDev();
+        racine.querySelector(".aide")?.remove();
+        corps.contentEditable = "false";
+        info.textContent = "";
+        corps.replaceChildren(message(m, echecs ? "err" : "ok"));
+        barre.replaceChildren();
+        if (echecs) boutonPrecedente("Réappliquer les réponses");
+        bouton("Fermer", fermer);
+        if (!echecs) setTimeout(fermer, 2500);
+      },
+      resultat({ original, corrige, duree, remplacable, frameId, envoye, libres, precedente }) {
         retirerDev();
         racine.querySelector(".aide")?.remove();
         corps.contentEditable = "false";
@@ -832,7 +869,7 @@
           // Retouches limitées aux réponses tapées : remplacement case par case
           const ops = libres && texte !== propose ? opsRetouchees(propose, texte, libres) : null;
           const r = await chrome.runtime.sendMessage({ type: "remplacer", frameId, texte, ops });
-          if (r?.ok) { fermer(); return; }
+          if (r?.ok) { if (r.verification) { corps.contentEditable = "false"; corps.replaceChildren(message("Remplacé — vérification de l'enregistrement des réponses…")); barre.replaceChildren(); } else fermer(); return; }
           statut.textContent = r?.erreur || "Échec du remplacement.";
           statut.className = "msg err";
           bRemplacer.disabled = false;
@@ -844,6 +881,7 @@
           statut.className = "msg ok";
         });
         bouton("Rétablir la proposition", () => afficherDiff(propose));
+        if (precedente) boutonPrecedente();
         const espace = document.createElement("span");
         espace.className = "sp";
         barre.append(espace, statut);

@@ -203,6 +203,32 @@ chrome.runtime.onMessage.addListener((msg, sender, repondre) => {
     })();
     return;
   }
+  if ((msg.type === "corrigerIci" || msg.type === "rechargerExtension") && sender.tab?.id != null) {
+    (async () => {
+      const { devHooks = false } = await chrome.storage.local.get({ devHooks: false });
+      if (!devHooks || !/(^|\.)follow\.fr$/.test((() => { try { return new URL(sender.url || "").hostname; } catch { return ""; } })())) return;
+      if (msg.type === "rechargerExtension") chrome.runtime.reload(); else corrigerOnglet(sender.tab.id);
+    })();
+    return;
+  }
+  if (msg.type === "reappliquer" && sender.tab?.id != null) {
+    const tabId = sender.tab.id;
+    (async () => {
+      const { historique = [] } = await chrome.storage.local.get({ historique: [] });
+      const h = historique.find(x => x.site === "Follow" && (!msg.docId || x.docId === msg.docId));
+      if (!h) return { ok: false, erreur: "Aucune correction enregistrée pour ce courrier." };
+      // la frame d'origine : celle qui porte le docId (frame principale en pratique)
+      const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null);
+      const frameId = (frames || [{ frameId: 0 }]).find(f => /docId=/.test(f.url || ""))?.frameId ?? 0;
+      await dansLaPage(tabId, frameId, annoterVariables);
+      const r = await dansLaPage(tabId, frameId, remplacerVariables, [h.ops || [], h.vides || [], h.blocs || [], h.runs || [], { force: true }]);
+      journal(`réapplication : ${JSON.stringify({ ok: r?.ok, erreur: r?.erreur, reponses: (r?.majs || []).length })}`); // jamais le texte
+      if (r?.ok && (h.ops || []).length) verifierApres(tabId, frameId, h.ops);
+      else if (r?.ok) envoyer(tabId, 0, { type: "verification", message: "Correction réappliquée.", echecs: 0 });
+      return r;
+    })().then(repondre);
+    return true;
+  }
   if (msg.type !== "remplacer" || sender.tab?.id == null) return;
   const tabId = sender.tab.id, frameId = msg.frameId;
   (async () => {
@@ -211,17 +237,29 @@ chrome.runtime.onMessage.addListener((msg, sender, repondre) => {
     const op = (await chrome.storage.session.get(cle))[cle];
     // (msg.ops : réponses retouchées à la main dans le panneau)
     if (op && op.frameId === frameId && (op.corrige === msg.texte || msg.ops)) {
-      const ops = op.corrige === msg.texte ? op.ops : msg.ops;
-      // filet de sécurité : les 5 derniers courriers (texte capturé et texte corrigé) gardés localement dans l'extension,
-      // récupérables depuis ses options si une sauvegarde Follow échoue
+      const ops = (op.corrige === msg.texte ? op.ops : msg.ops).map(o => ({ ...o, questionId: o.questionId ?? (op.ops.find(x => x.cle === o.cle) || {}).questionId ?? null }));
+      // filet de sécurité : la correction complète (réponses par questionId, texte fixe, cases) des 5 derniers courriers,
+      // gardée localement dans l'extension et réapplicable depuis le panneau si l'enregistrement Follow a échoué
       try {
         const { historique = [] } = await chrome.storage.local.get({ historique: [] });
-        historique.unshift({ ts: Date.now(), site: "Follow", original: op.original || "", corrige: msg.texte });
+        historique.unshift({ ts: Date.now(), site: "Follow", docId: op.docId || "", original: op.original || "", corrige: msg.texte, ops, vides: op.vides, blocs: op.blocs || [], runs: op.runs || [] });
         await chrome.storage.local.set({ historique: historique.slice(0, 5) });
       } catch {}
       const r = await dansLaPage(tabId, frameId, remplacerVariables, [ops, op.vides, op.blocs || [], op.runs || []]);
-      journal(`remplacement : ${JSON.stringify(r)} ; réponses à mettre à jour ${ops.length}, cases vides ${op.vides.length}, paragraphes supprimés ${(op.blocs || []).length}, paragraphes réécrits ${(op.runs || []).length}`);
-      if (r?.ok) await chrome.storage.session.remove(cle);
+      journal(`remplacement : ${JSON.stringify({ ...r, majs: (r?.majs || []).length })} ; réponses à mettre à jour ${ops.length}, cases vides ${op.vides.length}, paragraphes supprimés ${(op.blocs || []).length}, paragraphes réécrits ${(op.runs || []).length}`);
+      if (r?.ok) {
+        await chrome.storage.session.remove(cle);
+        // les questionId ne sont connus que dans le monde de la page : on les reporte dans la sauvegarde (réapplication)
+        const majs = r.majs || [];
+        if (majs.length) {
+          try {
+            const { historique = [] } = await chrome.storage.local.get({ historique: [] });
+            if (historique[0]) { historique[0].ops = majs.map(m => ({ cle: m.cle, questionId: m.questionId, texte: m.texte })); await chrome.storage.local.set({ historique }); }
+          } catch {}
+          verifierApres(tabId, frameId, majs);
+          return { ...r, verification: true };
+        }
+      }
       return r;
     }
     if (op && op.frameId === frameId) {
@@ -447,12 +485,13 @@ function annoterVariables() {
 //  - cases vides (vides) et paragraphes non remplis (blocs) : retirés du courrier ;
 //  - puis @RENDER/REFETCH_VARIABLE_DATA_ON_EDITOR pour réafficher les variables mises à jour.
 // Exécutée dans le monde de la page : autonome.
-function remplacerVariables(ops, vides, blocs = [], runs = []) {
+function remplacerVariables(ops, vides, blocs = [], runs = [], opts = {}) {
+  const force = !!opts.force; // réapplication : variables retrouvées par questionId, éléments manquants ignorés
   if (!ops.length && !vides.length && !blocs.length && !runs.length) return { ok: true };
   const Z = String.fromCharCode(0xFEFF);
   const racine = cle => [...document.querySelectorAll(`[data-slate-void][data-key="${cle}"]`)]
     .find(v => !v.parentElement.closest("[data-slate-void]"));
-  const premier = racine(ops[0]?.cle ?? vides[0]) || ((blocs.length || runs.length) && document.querySelector(`[data-key="${blocs[0] || runs[0].bloc}"]`));
+  const premier = racine(ops[0]?.cle ?? vides[0]) || ((blocs.length || runs.length) && document.querySelector(`[data-key="${blocs[0] || runs[0].bloc}"]`)) || (force && document.querySelector("[data-slate-editor] [data-slate-void]"));
   if (!premier) return { ok: false, erreur: "Variables introuvables (courrier rechargé ?) : relancez la correction." };
   const hote = premier.closest("[data-slate-editor]");
   const fibre = el => el[Object.keys(el).find(k => k.startsWith("__reactFiber") || k.startsWith("__reactInternalInstance"))];
@@ -499,9 +538,10 @@ function remplacerVariables(ops, vides, blocs = [], runs = []) {
   // vérifications avant toute modification
   const majs = [];
   for (const o of ops) {
+    if (force) { if (o.questionId) majs.push({ questionId: o.questionId, texte: o.texte }); continue; }
     const v = racine(o.cle);
     if (!v || texteVariable(v) !== o.original) return { ok: false, erreur: "Une réponse a changé depuis la correction : relancez-la ou utilisez « Copier »." };
-    const qid = questionIdDe(v);
+    const qid = o.questionId || questionIdDe(v);
     if (!qid) return { ok: false, erreur: "Variable sans identifiant de question : utilisez « Copier »." };
     majs.push({ questionId: qid, texte: o.texte });
   }
@@ -528,7 +568,7 @@ function remplacerVariables(ops, vides, blocs = [], runs = []) {
     // paragraphes réécrits : cases conservées, texte fixe modifié par différences, cases vides retirées
     for (const r of runs) {
       let bloc = editor.value.document.getNode(r.bloc);
-      if (!bloc) return { ok: false, erreur: "Paragraphe introuvable (courrier rechargé ?) : relancez la correction." };
+      if (!bloc) { if (force) continue; return { ok: false, erreur: "Paragraphe introuvable (courrier rechargé ?) : relancez la correction." }; }
       // séquence réelle du paragraphe : runs de texte et variables (via le DOM pour la classe)
       const seq = []; // { type: "texte", keys: [{key, len}], texte } | { type: "void", key, classe }
       for (const node of bloc.nodes.toArray()) {
@@ -553,7 +593,7 @@ function remplacerVariables(ops, vides, blocs = [], runs = []) {
       }
       const gardes = seq2.filter(x => x.type === "void");
       const morceaux = r.nouveau.split(/\[(?:L|C|D)\d+\]/);
-      if (morceaux.length !== gardes.length + 1) return { ok: false, erreur: `Structure du paragraphe non reconnue (${gardes.length} variables, ${morceaux.length - 1} marqueurs) : relancez la correction ou utilisez « Copier ».` };
+      if (morceaux.length !== gardes.length + 1) { if (force) continue; return { ok: false, erreur: `Structure du paragraphe non reconnue (${gardes.length} variables, ${morceaux.length - 1} marqueurs) : relancez la correction ou utilisez « Copier ».` }; }
       const runsTexte = seq2.filter(x => x.type === "texte");
       // applique de la fin vers le début (les positions des runs précédents restent valides)
       for (let k = runsTexte.length - 1; k >= 0; k--) {
@@ -602,7 +642,7 @@ function remplacerVariables(ops, vides, blocs = [], runs = []) {
   } catch (e) {
     return { ok: false, erreur: "L'éditeur a refusé la modification (" + e.message + ")." };
   }
-  return { ok: true, reponsesMisesAJour: majs.length };
+  return { ok: true, reponsesMisesAJour: majs.length, majs: majs.map((m, i) => ({ cle: ops[i] ? ops[i].cle : null, questionId: m.questionId, texte: m.texte })) };
 }
 
 // Exécutée dans le monde de la page (accès à l'instance React/Slate).
@@ -671,6 +711,44 @@ function remplacerSlate(debut, fin, texte) {
     return { ok: false, erreur: "L'éditeur a refusé la modification (" + e.message + ")." };
   }
   return { ok: true };
+}
+
+// Après un remplacement sur Follow : vérifie 4 s plus tard que chaque réponse corrigée est bien celle du store
+// (l'enregistrement Follow échoue parfois), et l'annonce dans le panneau avec « Réappliquer » si besoin.
+function verifierApres(tabId, frameId, ops) {
+  setTimeout(async () => {
+    const r = await dansLaPage(tabId, frameId, verifierReponses, [ops]);
+    const echecs = r?.echecs?.length || 0;
+    journal(`vérification : ${JSON.stringify(r)}`);
+    envoyer(tabId, 0, { type: "verification", echecs, message: echecs
+      ? `${echecs} réponse(s) sur ${ops.length} n'ont pas été enregistrées par Follow. Cliquez « Réappliquer les réponses » (la correction est conservée dans l'extension).`
+      : `${ops.length} réponse(s) corrigée(s) et enregistrée(s) dans Follow.` });
+  }, 4000);
+}
+
+async function precedenteDisponible(docId) {
+  const { historique = [] } = await chrome.storage.local.get({ historique: [] });
+  return historique.some(x => x.site === "Follow" && x.docId && x.docId === docId);
+}
+
+// Monde de la page : compare les réponses attendues à celles du store Follow
+function verifierReponses(ops) {
+  const conteneur = [...document.querySelectorAll("body, body > *")].map(el => el[Object.keys(el).find(k => k.startsWith("__reactContainer"))]).find(Boolean);
+  let store = null; const pile = [conteneur];
+  for (let n = 0; pile.length && n < 50000 && !store; n++) { const f = pile.pop(); if (!f) continue; if (typeof f.memoizedProps?.store?.getState === "function") store = f.memoizedProps.store; if (f.child) pile.push(f.child); if (f.sibling) pile.push(f.sibling); }
+  if (!store) return { echecs: ops.map(o => o.questionId), erreur: "store introuvable" };
+  const st = store.getState();
+  const docId = new URLSearchParams(location.search).get("docId");
+  const norm = t => String(t || "").replace(/\s+/g, " ").trim();
+  const echecs = [];
+  for (const o of ops) {
+    if (!o.questionId) continue;
+    const d = (st.domain?.documentAnswerValues?.[docId] || []).find(a => a.questionId === o.questionId && a.answerId == null);
+    const c = (st.cache?.documentInstances?.details?.[docId]?.answerValues || []).find(a => a.questionId === o.questionId && a.answerId == null);
+    const v = d ? d.value : (c ? c.value : null);
+    if (norm(v) !== norm(o.texte)) echecs.push(o.questionId);
+  }
+  return { echecs, verifiees: ops.length };
 }
 
 function envoyer(tabId, frameId, msg) {
@@ -778,7 +856,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
   if (!cap?.texte?.trim()) {
     return envoyer(tabId, 0, { type: "erreur", message: "Aucun texte sélectionné." });
   }
-  const echec = message => envoyer(tabId, 0, { type: "erreur", message });
+  const echec = async message => envoyer(tabId, 0, { type: "erreur", message, precedente: cap.parties ? await precedenteDisponible(cap.docId || "") : false });
   dernierEnvoi = null;
 
   let corrige, duree = 0;
@@ -815,7 +893,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
       const precedent = (visibles.slice(0, k).map(x => x.s).join("") + avant).replace(/[ \t]+$/, "").slice(-1);
       const suivant = (apres + visibles.slice(k + 1).map(x => x.s).join("")).replace(/^[ \t]+/, "");
       segments.push({ s: coeur, milieu: precedent !== "" && !/[\n.!?…]/.test(precedent), suite: suivant !== "" && suivant[0] !== "\n" });
-      return { t: "libre", avant, i: segments.length - 1, apres, cle: p.cle, original: p.s };
+      return { t: "libre", avant, i: segments.length - 1, apres, cle: p.cle, qid: p.qid || null, original: p.s };
     };
     for (const p of cap.parties) {
       if (mixtes.has(p.bloc) && p.s !== "\n") {
@@ -901,14 +979,14 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
     // modifié par différences, cases vides retirées, paragraphes non remplis supprimés.
     const tousSegments = [...morceaux.filter(p => p.t === "libre"), ...paras.flatMap(q => q.items.filter(it => it.t === "libre").map(it => it.seg))];
     const ops = tousSegments
-      .map(p => ({ cle: p.cle, original: p.original, texte: (p.avant + corriges[p.i] + p.apres).replace(/^\n+|\n+$/g, "") }))
+      .map(p => ({ cle: p.cle, questionId: p.qid || null, original: p.original, texte: (p.avant + corriges[p.i] + p.apres).replace(/^\n+|\n+$/g, "") }))
       .filter(o => o.texte !== o.original);
     // classe de chaque case du paragraphe, figée à la capture (le DOM peut être re-rendu avant « Remplacer »)
     const classesDe = (q) => { const m = {}; for (const p of cap.parties) if (p.bloc === q.cle && p.cle && p.t !== "fixe") m[p.cle] = p.t; return m; };
     const runs = paras.map((q, i) => ({ bloc: q.cle, nouveau: parasCorriges[i], voids: classesDe(q) })).filter((r, i) => r.nouveau !== paras[i].s.replace(/\s*\[vide\]\s*/g, " ").replace(/[ \t]{2,}/g, " ").trim() || paras[i].items.some(it => it.t === "vide"));
     const vides = cap.parties.filter(p => p.t === "vide" && !p.sup).map(p => p.cle);
     const blocs = cap.blocsSuppr || [];
-    await chrome.storage.session.set({ ["remplacement_" + tabId]: { frameId, corrige, ops, vides, blocs, runs, original: cap.texte } });
+    await chrome.storage.session.set({ ["remplacement_" + tabId]: { frameId, corrige, ops, vides, blocs, runs, original: cap.texte, docId: cap.docId || "" } });
   } else if (/(^|\.)follow\.fr$/.test(cap.site || "")) {
     // Sécurité : sur Follow, seules les réponses tapées partent en correction. Une
     // sélection hors de l'éditeur de courrier n'est jamais envoyée telle quelle.
@@ -927,6 +1005,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
   }
   envoyer(tabId, 0, {
     type: "resultat",
+    precedente: cap.parties ? await precedenteDisponible(cap.docId || "") : false,
     original: cap.texte,
     corrige,
     duree,
