@@ -833,9 +833,9 @@ async function corrigerTexteLibre(tabId, p) {
   const rep = await appelerDictopen(p.masque, false, p.contexte);
   if (!rep.ok) return envoyer(tabId, 0, { type: "erreur", message: rep.erreur });
   const r = DictopenPseudo.restaurer(rep.corrige, p.donnees);
-  if (r.manquants.length) return envoyer(tabId, 0, { type: "erreur", message: `Réponse incomplète (marqueur ${r.manquants[0]} absent) : relancez la correction.` });
   envoyer(tabId, 0, {
     type: "resultat",
+    avertissement: r.manquants.length ? `La correction a retiré ${r.manquants.length} mention(s) masquée(s) (nom, date…) : vérifiez les passages barrés avant de remplacer.` : "",
     original: p.original,
     corrige: sansLignesAjoutees(r.texte, p.original),
     duree: rep.duree,
@@ -859,7 +859,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
   const echec = async message => envoyer(tabId, 0, { type: "erreur", message, precedente: cap.parties ? await precedenteDisponible(cap.docId || "") : false });
   dernierEnvoi = null;
 
-  let corrige, duree = 0;
+  let corrige, duree = 0, avertissement = "";
   const libres = []; // { cle, original, s, e } : réponses tapées dans le texte corrigé
   const contexte = cap.contexte ? [cap.contexte.patient && `patient : ${cap.contexte.patient}`, cap.contexte.destinataire && `destinataire du courrier : ${cap.contexte.destinataire}`].filter(Boolean).join(" ; ") : "";
   if (cap.parties) {
@@ -932,7 +932,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
       const rep = await appelerDictopen(masque.texte, true, contexte);
       if (!rep.ok) return echec(rep.erreur);
       const rest = DictopenPseudo.restaurer(rep.corrige, masque.donnees);
-      if (rest.manquants.length) return echec(`Réponse incomplète (marqueur ${rest.manquants[0]} absent) : relancez la correction.`);
+      if (rest.manquants.length) avertissement = `La correction a retiré ${rest.manquants.length} mention(s) masquée(s) (nom, date…) : vérifiez les passages barrés avant de remplacer.`;
       rep.corrige = rest.texte;
       journal(`réponse : ${(rep.corrige.match(/<s\d+/g) || []).length} segment(s), ${(rep.corrige.match(/<p\d+>/g) || []).length} paragraphe(s)`);
       for (const m of rep.corrige.matchAll(/<s(\d+)(?:\s[^>]*)?>([\s\S]*?)<\/s\1>/g)) corriges[m[1] - 1] = m[2];
@@ -1005,6 +1005,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
   }
   envoyer(tabId, 0, {
     type: "resultat",
+    avertissement,
     precedente: cap.parties ? await precedenteDisponible(cap.docId || "") : false,
     original: cap.texte,
     corrige,

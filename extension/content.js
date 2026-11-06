@@ -798,7 +798,7 @@
         bouton("Fermer", fermer);
         if (!echecs) setTimeout(fermer, 2500);
       },
-      resultat({ original, corrige, duree, remplacable, frameId, envoye, libres, precedente }) {
+      resultat({ original, corrige, duree, remplacable, frameId, envoye, libres, precedente, avertissement }) {
         retirerDev();
         racine.querySelector(".aide")?.remove();
         corps.contentEditable = "false";
@@ -882,6 +882,7 @@
         });
         bouton("Rétablir la proposition", () => afficherDiff(propose));
         if (precedente) boutonPrecedente();
+        if (avertissement) { statut.textContent = avertissement; statut.className = "msg err"; }
         const espace = document.createElement("span");
         espace.className = "sp";
         barre.append(espace, statut);

@@ -611,10 +611,10 @@ async function correctSelection() {
     const masque = pseudonymiser(original);
     auditEnvoi({ canal: 'bureau', correcteur: cfg.provider || 'openai', masques: masque.donnees.map((d) => d.type || '?'), texte: masque.texte });
     if (masque.donnees.length) console.log(`correction : ${masque.donnees.length} identifiant(s) masqué(s) (${masque.types.join(', ')})`);
-    const r = await correctText(keys, cfg, masque.texte, { level: cfg.level });
+    const r = await correctKeepingMarkers(keys, cfg, masque.texte, { level: cfg.level });
     if (!r.text) throw new Error('Correction : réponse vide');
     const rest = restaurer(r.text, masque.donnees);
-    if (rest.manquants.length) throw new Error(`Correction : réponse incomplète (marqueur ${rest.manquants[0]} absent), relancez`);
+    if (rest.manquants.length) console.log(`correction : ${rest.manquants.length} identifiant(s) retiré(s) par le modèle (visible dans la relecture)`);
     r.text = rest.texte;
     const usage = store.addUsage({ corrections: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(r.model, r.inputTokens, r.outputTokens) });
     send('usage', usage);
@@ -636,6 +636,22 @@ async function correctSelection() {
 }
 
 const BROWSERS = /^(Google Chrome|Chromium|Brave Browser|Microsoft Edge|Arc|Vivaldi|Opera|firefox|Firefox|chrome|msedge|brave|opera|vivaldi)/i;
+// Correction avec marqueurs [IDn] : si le modèle en perd un, une seule relance avec rappel explicite ;
+// s'il manque encore, le texte est rendu tel quel (l'appelant signale la mention retirée, rien n'est bloqué).
+async function correctKeepingMarkers(keys, cfg, text, opts) {
+  const attendus = [...new Set(text.match(/\[ID\d+\]/g) || [])];
+  let r = await correctText(keys, cfg, text, opts);
+  let manquants = attendus.filter((m) => !r.text.includes(m));
+  if (manquants.length) {
+    console.log(`correction : ${manquants.length} marqueur(s) perdu(s), relance`);
+    const extra = `Attention : ta réponse précédente avait supprimé ${manquants.join(', ')}. Ces marqueurs remplacent des noms ou identifiants : recopie-les obligatoirement, à leur place, même si tu réécris la phrase autour.`;
+    const r2 = await correctText(keys, { ...cfg, instructions: [cfg.instructions, extra].filter(Boolean).join('\n') }, text, opts);
+    const m2 = attendus.filter((m) => !r2.text.includes(m));
+    if (m2.length <= manquants.length) { r = { ...r2, inputTokens: r.inputTokens + r2.inputTokens, outputTokens: r.outputTokens + r2.outputTokens }; manquants = m2; }
+  }
+  return { ...r, manquants };
+}
+
 // API locale pour l'extension de navigateur : relecture d'un texte (ou de segments balisés) avec la clé enregistrée
 // réglages de l'extension tenus dans Dictopen et poussés par la liaison
 function extensionSettings() {
@@ -666,9 +682,8 @@ const localApi = new LocalApi({
     // l'extension masque déjà les identifiants ; second passage ici par précaution (sans effet si rien ne reste)
     const masque = pseudonymiser(text);
     auditEnvoi({ canal: segments ? 'extension-follow' : 'extension', correcteur: cfg.provider || 'openai', masques: masque.donnees.map((d) => d.type || '?'), contexte: context || '', texte: masque.texte });
-    const r = await correctText(keys, cfg, masque.texte, { level, segments, context });
+    const r = await correctKeepingMarkers(keys, cfg, masque.texte, { level, segments, context });
     const rest = restaurer(r.text, masque.donnees);
-    if (rest.manquants.length) throw new Error(`réponse incomplète (marqueur ${rest.manquants[0]} absent)`);
     r.text = rest.texte;
     const usage = store.addUsage({ corrections: 1, textInputTokens: r.inputTokens, textOutputTokens: r.outputTokens, usd: textCost(r.model, r.inputTokens, r.outputTokens) });
     send('usage', usage);
