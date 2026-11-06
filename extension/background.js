@@ -12,7 +12,7 @@ importScripts("pseudo.js");
 
 // afficherEnvoi : volet « Envoyé à Dictopen » dans le panneau (vérification : aucun nom de patient ne doit y figurer)
 // envoiDirect : hors Follow, envoyer sans confirmation le texte choisi automatiquement (option, avec avertissement)
-const DEFAUTS = { niveau: "ortho", paragraphes: "supprimer", port: 47395, afficherEnvoi: true, jeton: "", envoiDirect: false, garderMedecins: false };
+const DEFAUTS = { niveau: "ortho", paragraphes: "supprimer", port: 47395, afficherEnvoi: true, jeton: "", envoiDirect: false };
 
 // ---------------------------------------------------------------- jeton partagé avec Dictopen
 // Chaque requête porte le jeton (en-tête X-Dictopen-Token, ou ?token= pour le WebSocket) ; et avant d'envoyer du texte,
@@ -107,7 +107,6 @@ async function connecter() {
       if (msg.paragraphes === "supprimer" || msg.paragraphes === "garder") st.paragraphes = msg.paragraphes;
       if (typeof msg.afficherEnvoi === "boolean") st.afficherEnvoi = msg.afficherEnvoi;
       if (typeof msg.envoiDirect === "boolean") st.envoiDirect = msg.envoiDirect;
-      if (typeof msg.garderMedecins === "boolean") st.garderMedecins = msg.garderMedecins;
       await chrome.storage.local.set(st);
       return;
     }
@@ -762,12 +761,9 @@ let dernierEnvoi = null; // texte envoyé à Dictopen pour la correction en cour
 // RÈGLE ABSOLUE : la phrase qui porte le nom du patient (« Je vous remercie de m'avoir adressé… ») et l'en-tête
 // ne partent jamais. Dernier verrou avant tout envoi, quel que soit le chemin de capture.
 const INTERDIT = /vous remercie de m['’] ?avoir adress|\b(cher|chère|ch[èe]re)\s+(confrère|consœur|consoeur|docteur|collègue|ami)|\bdocteur\s+\p{Lu}/iu;
-// avec « noms de médecins en clair », seule la mention « Docteur X » isolée est admise ; formule d'appel et adressage restent bloqués
-const INTERDIT_SANS_MEDECINS = /vous remercie de m['’] ?avoir adress|\b(cher|chère|ch[èe]re)\s+(confrère|consœur|consoeur|docteur|collègue|ami)/iu;
 
 async function appelerDictopen(texte, segments, contexte) {
-  const { garderMedecins } = await chrome.storage.local.get(DEFAUTS);
-  if ((garderMedecins ? INTERDIT_SANS_MEDECINS : INTERDIT).test(texte)) {
+  if (INTERDIT.test(texte)) {
     dernierEnvoi = "(ENVOI REFUSÉ : le texte contient l'en-tête ou la phrase d'adressage du patient)";
     return { ok: false, erreur: "Règle de confidentialité : le texte contient l'en-tête du courrier (nom du patient ou du destinataire). Rien n'a été envoyé." };
   }
@@ -930,7 +926,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
       ].join("\n");
       journal(`envoi : ${segments.length} segment(s), ${paras.length} paragraphe(s) mixte(s) sur ${parBloc.size} bloc(s) ; blocs sans clé : ${cap.parties.filter(p => !p.bloc).length}`);
       // identifiants éventuels dans les réponses tapées : masqués avant l'envoi, restaurés dans la réponse
-      const masque = DictopenPseudo.pseudonymiser(envoi, { garderMedecins: (await chrome.storage.local.get(DEFAUTS)).garderMedecins });
+      const masque = DictopenPseudo.pseudonymiser(envoi);
       dernierEnvoi = null;
       envoyer(tabId, 0, { type: "attente", original: cap.texte });
       const rep = await appelerDictopen(masque.texte, true, contexte);
@@ -998,7 +994,7 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
   } else {
     // Autre site : le texte part en entier, identifiants reconnus masqués. S'il a été choisi automatiquement
     // (aucune sélection de l'utilisateur), on montre d'abord ce qui va partir, sauf option « toujours envoyer ».
-    const { texte: masque, donnees, types } = DictopenPseudo.pseudonymiser(cap.texte, { garderMedecins: (await chrome.storage.local.get(DEFAUTS)).garderMedecins });
+    const { texte: masque, donnees, types } = DictopenPseudo.pseudonymiser(cap.texte);
     const attente = { frameId, original: cap.texte, masque, donnees, contexte, remplacable: cap.remplacable };
     if (auto && !envoiDirect) {
       await chrome.storage.session.set({ ["confirmation_" + tabId]: attente });

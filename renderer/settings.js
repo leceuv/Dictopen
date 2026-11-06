@@ -154,7 +154,6 @@
   const renderExt = () => {
     $('k_paragraphes').value = settings.correction.paragraphes === 'garder' ? 'garder' : 'supprimer';
     $('k_showSent').checked = settings.correction.showSent !== false;
-    $('k_keepDoctors').checked = !!settings.correction.keepDoctors;
     $('k_directSend').checked = !!settings.correction.directSend;
     $('k_directSendWarn').style.display = $('k_directSend').checked ? '' : 'none';
   };
@@ -165,8 +164,8 @@
     // activation de l'envoi sans vérification : confirmation explicite, comme depuis le panneau de l'extension
     if ($('k_directSend').checked && !settings.correction.directSend && !confirm('Envoyer sans vérification un texte que vous n’aurez pas vu ? Le masquage des identifiants peut laisser passer un nom de patient : vous en assumez la responsabilité.')) $('k_directSend').checked = false;
     $('k_directSendWarn').style.display = $('k_directSend').checked ? '' : 'none';
-    return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value, paragraphes: $('k_paragraphes').value, showSent: $('k_showSent').checked, keepDoctors: $('k_keepDoctors').checked, directSend: $('k_directSend').checked } }); };
-  for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions', 'k_paragraphes', 'k_showSent', 'k_keepDoctors', 'k_directSend']) $(id).addEventListener('change', saveCorrection);
+    return save({ correction: { provider: $('k_provider').value, anthropicModel: $('k_anthropicModel').value, claudeCodeModel: $('k_claudeCodeModel').value, model: $('k_model').value, reasoningEffort: $('k_effort').value, level: $('k_level').value, instructions: $('k_instructions').value, paragraphes: $('k_paragraphes').value, showSent: $('k_showSent').checked, directSend: $('k_directSend').checked } }); };
+  for (const id of ['k_provider', 'k_anthropicModel', 'k_claudeCodeModel', 'k_model', 'k_effort', 'k_level', 'k_instructions', 'k_paragraphes', 'k_showSent', 'k_directSend']) $(id).addEventListener('change', saveCorrection);
   // clé Anthropic
   const refreshAKey = async () => { $('akeyMasked').textContent = (await api.getApiKeyMasked('anthropic')) || 'aucune'; };
   refreshAKey();

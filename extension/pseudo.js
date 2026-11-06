@@ -16,9 +16,7 @@
 
   // ordre : du plus spécifique au plus général ; `garde` = partie laissée en clair (civilité, « née le »)
   const REGLES = [
-    // médecins (Dr, Docteur, Pr) : règle à part, que l'utilisateur peut désactiver (noms de confrères dans le corps du courrier)
-    { type: 'nom de médecin', re: new RegExp(`\\b((?:Dr|Docteur|Professeur|Pr)\\.?\\s+)(${NOM}(?:\\s+${NOM}){0,2})`, 'gu'), garde: 1, medecin: true },
-    { type: 'nom', re: new RegExp(`\\b((?:Madame|Monsieur|Mademoiselle|Mme|Mlle|Mr|Mrs|Ms|M)\\.?\\s+)(${NOM}(?:\\s+${NOM}){0,2})`, 'gu'), garde: 1 },
+    { type: 'nom', re: new RegExp(`\\b((?:Madame|Monsieur|Mademoiselle|Mme|Mlle|Mr|Mrs|Ms|Dr|Docteur|Professeur|Pr|M)\\.?\\s+)(${NOM}(?:\\s+${NOM}){0,2})`, 'gu'), garde: 1 },
     { type: 'date de naissance', re: new RegExp(`\\b((?:n[ée]e?s?\\s+(?:le\\s+)?|date\\s+de\\s+naissance\\s*:?\\s*|DDN\\s*:?\\s*)\\b)(${DATE})`, 'giu'), garde: 1 },
     { type: 'numéro de sécurité sociale', re: /\b[12]\s?\d{2}\s?(?:0[1-9]|1[0-2]|[2-9]\d)\s?(?:\d{2}|2[AB])\s?\d{3}\s?\d{3}(?:\s?\d{2})?\b/g },
     { type: 'téléphone', re: /(?:\+33\s?[1-9]|\b0[1-9])(?:[\s.\-]?\d{2}){4}\b/g },
@@ -29,16 +27,14 @@
   const MARQUEUR = /\[ID(\d+)\]/g;
 
   // texte → { texte masqué, donnees: [{ marqueur, valeur, type }], types: [...] }
-  // opts.garderMedecins : les noms précédés de Dr / Docteur / Pr partent en clair (choix de l'utilisateur)
-  function pseudonymiser(texte, opts = {}) {
+  function pseudonymiser(texte) {
     texte = String(texte || '');
     let n = 0;
     for (const m of texte.matchAll(MARQUEUR)) n = Math.max(n, Number(m[1])); // ne pas réutiliser un marqueur déjà présent
     const donnees = [];
     const vus = new Map(); // même valeur → même marqueur
     let out = texte;
-    for (const { type, re, garde, medecin } of REGLES) {
-      if (medecin && opts.garderMedecins) continue;
+    for (const { type, re, garde } of REGLES) {
       out = out.replace(re, (...args) => {
         const m = args[0];
         const groupes = args.slice(1, -2);
