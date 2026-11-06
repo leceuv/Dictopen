@@ -608,7 +608,7 @@ async function correctSelection() {
     sendReview({ original: '', corrected: '', pending: true });
     const t0 = Date.now();
     // identifiants reconnus (nom après civilité, date de naissance, NIR, téléphone…) masqués avant l'envoi, restaurés après
-    const masque = pseudonymiser(original);
+    const masque = pseudonymiser(original, { garderMedecins: !!cfg.keepDoctors });
     auditEnvoi({ canal: 'bureau', correcteur: cfg.provider || 'openai', masques: masque.donnees.map((d) => d.type || '?'), texte: masque.texte });
     if (masque.donnees.length) console.log(`correction : ${masque.donnees.length} identifiant(s) masqué(s) (${masque.types.join(', ')})`);
     const r = await correctKeepingMarkers(keys, cfg, masque.texte, { level: cfg.level });
@@ -656,7 +656,7 @@ async function correctKeepingMarkers(keys, cfg, text, opts) {
 // réglages de l'extension tenus dans Dictopen et poussés par la liaison
 function extensionSettings() {
   const c = store.settings.correction;
-  return { niveau: c.level === 'style' ? 'style' : 'ortho', paragraphes: c.paragraphes === 'garder' ? 'garder' : 'supprimer', afficherEnvoi: c.showSent !== false, envoiDirect: !!c.directSend };
+  return { garderMedecins: !!c.keepDoctors, niveau: c.level === 'style' ? 'style' : 'ortho', paragraphes: c.paragraphes === 'garder' ? 'garder' : 'supprimer', afficherEnvoi: c.showSent !== false, envoiDirect: !!c.directSend };
 }
 function pushExtensionSettings() {
   localApi.broadcast({ type: 'settings', ...extensionSettings() });
@@ -680,7 +680,7 @@ const localApi = new LocalApi({
     const keys = await correctionKeys();
     const t0 = Date.now();
     // l'extension masque déjà les identifiants ; second passage ici par précaution (sans effet si rien ne reste)
-    const masque = pseudonymiser(text);
+    const masque = pseudonymiser(text, { garderMedecins: !!cfg.keepDoctors });
     auditEnvoi({ canal: segments ? 'extension-follow' : 'extension', correcteur: cfg.provider || 'openai', masques: masque.donnees.map((d) => d.type || '?'), contexte: context || '', texte: masque.texte });
     const r = await correctKeepingMarkers(keys, cfg, masque.texte, { level, segments, context });
     const rest = restaurer(r.text, masque.donnees);

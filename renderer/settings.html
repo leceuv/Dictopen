@@ -151,6 +151,8 @@
     <div class="row"><label>Paragraphes non remplis (Follow)</label>
       <select id="k_paragraphes"><option value="supprimer">supprimer le paragraphe entier</option><option value="garder">garder le texte, retirer seulement les cases vides</option></select></div>
     <p class="hint">Paragraphe non rempli : au moins une case vide et aucune réponse (tapée ou cochée). Les données du dossier (elle, patient·e…) ne comptent pas comme réponses.</p>
+    <div class="row"><label>Envoyer en clair les noms de médecins (Dr, Docteur, Pr)</label><input type="checkbox" id="k_keepDoctors"></div>
+    <p class="hint">Par défaut, tout nom précédé d'une civilité est masqué avant l'envoi. Cochez pour laisser partir les noms de confrères (« j'adresse au Dr X ») ; les noms après Madame / Monsieur, les dates de naissance, numéros et adresses restent masqués, et l'en-tête du courrier Follow n'est jamais envoyé.</p>
     <div class="row"><label>Afficher dans le panneau le texte exact envoyé</label><input type="checkbox" id="k_showSent"><span class="hint">vérification de confidentialité</span></div>
     <div class="row"><label>Hors Follow : envoyer sans vérification le texte choisi automatiquement</label><input type="checkbox" id="k_directSend"></div>
     <p class="hint warn" id="k_directSendWarn" style="display:none"><b>Avertissement :</b> avec cette option, un texte que vous n'avez pas vu (champ actif, plus grand éditeur de la page) part vers le modèle dès que vous cliquez « Corriger » avec le navigateur devant. Il peut contenir un nom de patient ou d'autres données identifiantes que le masquage n'a pas reconnues ; vous en assumez la responsabilité (secret médical, RGPD).</p>

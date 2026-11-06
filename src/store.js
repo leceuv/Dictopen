@@ -33,6 +33,7 @@ const DEFAULTS = {
     // réglages de l'extension « Dictopen pour Chrome », poussés par la liaison locale (l'extension n'a plus de réglages propres)
     paragraphes: 'supprimer', // Follow : paragraphe non rempli supprimé en entier ('supprimer') ou seulement ses cases vides ('garder')
     showSent: true, // volet « Envoyé à Dictopen » dans le panneau
+    keepDoctors: false, // noms précédés de Dr / Docteur / Pr envoyés en clair (non masqués)
     directSend: false, // hors Follow : envoyer sans confirmation le texte choisi automatiquement (avertissement)
     instructions: '', // consignes ajoutées au prompt de correction (ex. formules à conserver)
     // extension « Dictopen pour Chrome » : serveur local pour la correction, et raccourci de l'extension déclenché
