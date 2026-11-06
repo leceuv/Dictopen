@@ -760,12 +760,15 @@ let dernierEnvoi = null; // texte envoyé à Dictopen pour la correction en cour
 // ---------------------------------------------------------------- Dictopen (serveur local)
 // RÈGLE ABSOLUE : la phrase qui porte le nom du patient (« Je vous remercie de m'avoir adressé… ») et l'en-tête
 // ne partent jamais. Dernier verrou avant tout envoi, quel que soit le chemin de capture.
-const INTERDIT = /vous remercie de m['’] ?avoir adress|\b(cher|chère|ch[èe]re)\s+(confrère|consœur|consoeur|docteur|collègue|ami)|\bdocteur\s+\p{Lu}/iu;
+// Seule la phrase d'adressage (qui porte le nom du patient) bloque l'envoi. Les noms de médecins ou de confrères
+// (« Dr X », « Cher Docteur X ») ne bloquent plus : ils sont masqués en [IDn] par la pseudonymisation avant ce point.
+// (L'ancienne règle « docteur + majuscule » en insensible à la casse refusait aussi « le docteur a… ».)
+const INTERDIT = /vous remercie de m['’] ?avoir adress/iu;
 
 async function appelerDictopen(texte, segments, contexte) {
   if (INTERDIT.test(texte)) {
     dernierEnvoi = "(ENVOI REFUSÉ : le texte contient l'en-tête ou la phrase d'adressage du patient)";
-    return { ok: false, erreur: "Règle de confidentialité : le texte contient l'en-tête du courrier (nom du patient ou du destinataire). Rien n'a été envoyé." };
+    return { ok: false, erreur: "Règle de confidentialité : le texte contient la phrase d'adressage du patient (« Je vous remercie de m'avoir adressé… »). Rien n'a été envoyé : sélectionnez le texte sans cette phrase." };
   }
   const reglages = await chrome.storage.local.get(DEFAUTS);
   const port = reglages.port || DEFAUTS.port;
