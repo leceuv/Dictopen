@@ -639,17 +639,28 @@ const BROWSERS = /^(Google Chrome|Chromium|Brave Browser|Microsoft Edge|Arc|Viva
 // Correction avec marqueurs [IDn] : si le modèle en perd un, une seule relance avec rappel explicite ;
 // s'il manque encore, le texte est rendu tel quel (l'appelant signale la mention retirée, rien n'est bloqué).
 async function correctKeepingMarkers(keys, cfg, text, opts) {
-  const attendus = [...new Set(text.match(/\[ID\d+\]/g) || [])];
+  // marqueurs à préserver : identifiants [IDn] (n'importe où) et variables [Ln]/[Cn]/[Dn] de chaque paragraphe <pN>, dans l'ordre
+  const ids = [...new Set(text.match(/\[ID\d+\]/g) || [])];
+  const parBloc = (t) => { const m = {}; for (const x of t.matchAll(/<p(\d+)>([\s\S]*?)<\/p\1>/g)) m[x[1]] = (x[2].match(/\[(?:L|C|D)\d+\]/g) || []).join(' '); return m; };
+  const attendusP = parBloc(text);
+  const defauts = (out) => {
+    const pb = parBloc(out);
+    const ps = Object.keys(attendusP).filter((k) => pb[k] !== attendusP[k]);
+    return { ids: ids.filter((m) => !out.includes(m)), ps, n: ids.filter((m) => !out.includes(m)).length + ps.length };
+  };
   let r = await correctText(keys, cfg, text, opts);
-  let manquants = attendus.filter((m) => !r.text.includes(m));
-  if (manquants.length) {
-    console.log(`correction : ${manquants.length} marqueur(s) perdu(s), relance`);
-    const extra = `Attention : ta réponse précédente avait supprimé ${manquants.join(', ')}. Ces marqueurs remplacent des noms ou identifiants : recopie-les obligatoirement, à leur place, même si tu réécris la phrase autour.`;
+  let d = defauts(r.text);
+  if (d.n) {
+    console.log(`correction : ${d.ids.length} identifiant(s) et ${d.ps.length} paragraphe(s) aux variables déplacées, relance`);
+    const rappels = [];
+    if (d.ids.length) rappels.push(`ta réponse précédente avait supprimé ${d.ids.join(', ')} : ces marqueurs remplacent des noms ou identifiants, recopie-les obligatoirement, à leur place, même si tu réécris la phrase autour`);
+    for (const k of d.ps) rappels.push(`dans <p${k}>, les marqueurs de variables doivent apparaître tous, exactement dans cet ordre : ${attendusP[k] || '(aucun)'} ; ne les déplace pas, n'en retire aucun, n'en ajoute aucun`);
+    const extra = `Attention : ${rappels.join(' ; ')}.`;
     const r2 = await correctText(keys, { ...cfg, instructions: [cfg.instructions, extra].filter(Boolean).join('\n') }, text, opts);
-    const m2 = attendus.filter((m) => !r2.text.includes(m));
-    if (m2.length <= manquants.length) { r = { ...r2, inputTokens: r.inputTokens + r2.inputTokens, outputTokens: r.outputTokens + r2.outputTokens }; manquants = m2; }
+    const d2 = defauts(r2.text);
+    if (d2.n <= d.n) { r = { ...r2, inputTokens: r.inputTokens + r2.inputTokens, outputTokens: r.outputTokens + r2.outputTokens }; d = d2; }
   }
-  return { ...r, manquants };
+  return { ...r, manquants: d.ids };
 }
 
 // API locale pour l'extension de navigateur : relecture d'un texte (ou de segments balisés) avec la clé enregistrée

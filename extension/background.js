@@ -943,11 +943,16 @@ async function lancer(tabId, frameId, { auto = false } = {}) {
       if (segments.some((_, i) => corriges[i] == null) || paras.some((_, i) => parasCorriges[i] == null)) return echec("Réponse incomplète (segment manquant) : relancez la correction.");
       corriges = corriges.map((c, i) => ajusterSegment(sansLignesAjoutees(c, segments[i].s).trim(), segments[i]));
       for (let i = 0; i < paras.length; i++) {
-        const t = sansLignesAjoutees(parasCorriges[i], paras[i].s).trim().replace(/\s*\[vide\]\s*/g, " ").replace(/[ \t]{2,}/g, " ");
+        let t = sansLignesAjoutees(parasCorriges[i], paras[i].s).trim().replace(/\s*\[vide\]\s*/g, " ").replace(/[ \t]{2,}/g, " ");
         // les marqueurs des variables conservées doivent tous être là, dans l'ordre
         const attendus = paras[i].s.match(/\[(?:L|C|D)\d+\]/g) || [];
         const recus = t.match(/\[(?:L|C|D)\d+\]/g) || [];
-        if (attendus.join(" ") !== recus.join(" ")) return echec(`Le modèle a déplacé ou retiré une variable du paragraphe ${i + 1} : relancez la correction.`);
+        if (attendus.join(" ") !== recus.join(" ")) {
+          // repli : paragraphe non réécrit (texte fixe d'origine), seules les cases vides sont retirées ; les réponses restent corrigées
+          t = paras[i].s.replace(/\s*\[vide\]\s*/g, " ").replace(/[ \t]{2,}/g, " ").replace(/^\n+|\n+$/g, "").trim();
+          avertissement = `Un paragraphe n'a pas pu être réécrit (le modèle a déplacé une variable) : seules ses cases vides sont retirées, vérifiez-le. Vos réponses sont corrigées.`;
+          journal(`paragraphe ${i + 1} : marqueurs attendus ${attendus.length}, reçus ${recus.length} → repli`);
+        }
         // le modèle recopie parfois le contenu d'une case cochée à côté de son marqueur : on retire ce doublon
         for (const c of paras[i].coches) { const n = c.trim(); if (n.length > 8 && t.includes(n)) t = t.split(n).join(" ").replace(/[ \t]{2,}/g, " ").trim(); }
         parasCorriges[i] = t;
