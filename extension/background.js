@@ -223,7 +223,7 @@ chrome.runtime.onMessage.addListener((msg, sender, repondre) => {
       await dansLaPage(tabId, frameId, annoterVariables);
       const r = await dansLaPage(tabId, frameId, remplacerVariables, [h.ops || [], h.vides || [], h.blocs || [], h.runs || [], { force: true }]);
       journal(`réapplication : ${JSON.stringify({ ok: r?.ok, erreur: r?.erreur, reponses: (r?.majs || []).length })}`); // jamais le texte
-      if (r?.ok && (h.ops || []).length) verifierApres(tabId, frameId, h.ops);
+      if (r?.ok && (h.ops || []).length) { const e = await dansLaPage(tabId, frameId, enregistrerReponses, [h.ops]); journal(`enregistrement (réapplication) : ${JSON.stringify(e)}`); verifierApres(tabId, frameId, h.ops); }
       else if (r?.ok) envoyer(tabId, 0, { type: "verification", message: "Correction réappliquée.", echecs: 0 });
       return r;
     })().then(repondre);
@@ -256,7 +256,8 @@ chrome.runtime.onMessage.addListener((msg, sender, repondre) => {
             const { historique = [] } = await chrome.storage.local.get({ historique: [] });
             if (historique[0]) { historique[0].ops = majs.map(m => ({ cle: m.cle, questionId: m.questionId, texte: m.texte })); await chrome.storage.local.set({ historique }); }
           } catch {}
-          verifierApres(tabId, frameId, majs);
+          // écriture une par une en arrière-plan, puis vérification (le panneau affiche « vérification… » en attendant)
+          dansLaPage(tabId, frameId, enregistrerReponses, [majs]).then(e => { journal(`enregistrement : ${JSON.stringify(e)}`); verifierApres(tabId, frameId, majs); });
           return { ...r, verification: true };
         }
       }
@@ -634,11 +635,7 @@ function remplacerVariables(ops, vides, blocs = [], runs = [], opts = {}) {
     }
     for (const cle of blocs) if (editor.value.document.getNode(cle)) editor.removeNodeByKey(cle);
     // réponses corrigées en place (sauvegardées par Follow), puis réaffichage des variables
-    for (const m of majs) store.dispatch({ type: "@MEDICAL_EVENT_DOMAIN/SET_ANSWER_VALUE", questionId: m.questionId, setAnswerValue: { questionType: "TEXT", value: m.texte } });
-    if (majs.length) {
-      const docId = Number(new URLSearchParams(location.search).get("docId"));
-      setTimeout(() => { try { store.dispatch({ type: "@RENDER/REFETCH_VARIABLE_DATA_ON_EDITOR", documentId: docId, id: docId }); } catch {} }, 1500);
-    }
+    // les réponses ne sont plus envoyées ici en rafale : enregistrerReponses() les écrit une par une (voir appelant)
   } catch (e) {
     return { ok: false, erreur: "L'éditeur a refusé la modification (" + e.message + ")." };
   }
@@ -713,17 +710,53 @@ function remplacerSlate(debut, fin, texte) {
   return { ok: true };
 }
 
+// Monde de la page : écrit les réponses UNE PAR UNE (Follow enregistre chaque réponse par un POST puis recharge les
+// réponses du document ; envoyées en rafale, un rechargement écrasait parfois la réponse suivante). Pour chacune :
+// action SET_ANSWER_VALUE, puis attente (jusqu'à 4 s) que le store porte la nouvelle valeur, puis pause de 600 ms.
+async function enregistrerReponses(majs) {
+  const conteneur = [...document.querySelectorAll("body, body > *")].map(el => el[Object.keys(el).find(k => k.startsWith("__reactContainer"))]).find(Boolean);
+  let store = null; const pile = [conteneur];
+  for (let n = 0; pile.length && n < 50000 && !store; n++) { const f = pile.pop(); if (!f) continue; if (typeof f.memoizedProps?.store?.getState === "function") store = f.memoizedProps.store; if (f.child) pile.push(f.child); if (f.sibling) pile.push(f.sibling); }
+  if (!store) return { ok: false, erreur: "store introuvable" };
+  const docId = new URLSearchParams(location.search).get("docId");
+  const norm = t => String(t || "").replace(/\s+/g, " ").trim();
+  const valeur = (qid) => {
+    const st = store.getState();
+    const d = (st.domain?.documentAnswerValues?.[docId] || []).find(a => a.questionId === qid && a.answerId == null);
+    const c = (st.cache?.documentInstances?.details?.[docId]?.answerValues || []).find(a => a.questionId === qid && a.answerId == null);
+    return d ? d.value : (c ? c.value : null);
+  };
+  const attendre = ms => new Promise(r => setTimeout(r, ms));
+  let prises = 0;
+  for (const m of majs) {
+    if (!m.questionId) continue;
+    store.dispatch({ type: "@MEDICAL_EVENT_DOMAIN/SET_ANSWER_VALUE", questionId: m.questionId, setAnswerValue: { questionType: "TEXT", value: m.texte } });
+    for (let t = 0; t < 20 && norm(valeur(m.questionId)) !== norm(m.texte); t++) await attendre(200);
+    if (norm(valeur(m.questionId)) === norm(m.texte)) prises++;
+    await attendre(600);
+  }
+  try { store.dispatch({ type: "@RENDER/REFETCH_VARIABLE_DATA_ON_EDITOR", documentId: Number(docId), id: Number(docId) }); } catch {}
+  return { ok: true, prises, total: majs.length };
+}
+
 // Après un remplacement sur Follow : vérifie 4 s plus tard que chaque réponse corrigée est bien celle du store
 // (l'enregistrement Follow échoue parfois), et l'annonce dans le panneau avec « Réappliquer » si besoin.
-function verifierApres(tabId, frameId, ops) {
+function verifierApres(tabId, frameId, ops, essai = 0) {
   setTimeout(async () => {
     const r = await dansLaPage(tabId, frameId, verifierReponses, [ops]);
-    const echecs = r?.echecs?.length || 0;
-    journal(`vérification : ${JSON.stringify(r)}`);
-    envoyer(tabId, 0, { type: "verification", echecs, message: echecs
-      ? `${echecs} réponse(s) sur ${ops.length} n'ont pas été enregistrées par Follow. Cliquez « Réappliquer les réponses » (la correction est conservée dans l'extension).`
-      : `${ops.length} réponse(s) corrigée(s) et enregistrée(s) dans Follow.` });
-  }, 4000);
+    const echecs = r?.echecs || [];
+    journal(`vérification${essai ? " (relance " + essai + ")" : ""} : ${JSON.stringify({ echecs: echecs.length, verifiees: r?.verifiees })}`);
+    if (echecs.length && essai < 2) {
+      // relance automatique, une réponse à la fois, des seules réponses non enregistrées
+      const a = ops.filter(o => echecs.includes(o.questionId));
+      envoyer(tabId, 0, { type: "verification", echecs: 0, enCours: true, message: `${echecs.length} réponse(s) pas encore enregistrée(s) par Follow : nouvel envoi automatique…` });
+      await dansLaPage(tabId, frameId, enregistrerReponses, [a]);
+      return verifierApres(tabId, frameId, ops, essai + 1);
+    }
+    envoyer(tabId, 0, { type: "verification", echecs: echecs.length, message: echecs.length
+      ? `${echecs.length} réponse(s) sur ${ops.length} n'ont pas été enregistrées par Follow malgré 2 nouvelles tentatives. Cliquez « Réappliquer les réponses » (la correction est conservée dans l'extension) ; si cela échoue encore, rechargez la page Follow puis réappliquez.`
+      : `${ops.length} réponse(s) corrigée(s) et enregistrée(s) dans Follow${essai ? " (après " + essai + " nouvel(s) envoi(s))" : ""}.` });
+  }, 2500);
 }
 
 async function precedenteDisponible(docId) {

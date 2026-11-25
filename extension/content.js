@@ -787,13 +787,14 @@
         bouton("Fermer", fermer);
       },
       // après « Remplacer » sur Follow : résultat de la vérification des réponses enregistrées
-      verification({ message: m, echecs, precedente }) {
+      verification({ message: m, echecs, precedente, enCours }) {
         retirerDev();
         racine.querySelector(".aide")?.remove();
         corps.contentEditable = "false";
         info.textContent = "";
         corps.replaceChildren(message(m, echecs ? "err" : "ok"));
         barre.replaceChildren();
+        if (enCours) return;
         if (echecs) boutonPrecedente("Réappliquer les réponses");
         bouton("Fermer", fermer);
         if (!echecs) setTimeout(fermer, 2500);
