@@ -67,20 +67,20 @@
   window.dictee.getSettings().then((s) => { wantedDeviceId = s.transcription.microphoneId || ''; reportDevice(); });
 
   // Casque sans fil (SteelSeries Arctis…) : il s'éteint après quelques minutes sans son en SORTIE, même si son micro
-  // sert. Un signal inaudible (bruit à -80 dBFS) joué en continu sur la sortie du casque le garde allumé,
-  // comme le font les applis de visio. Sortie choisie : celle du même périphérique que le micro, sinon le défaut.
+  // sert. Un signal inaudible joué en continu sur la sortie du casque le garde allumé,
+  // (signal infrasonore, inaudible). Sortie choisie : celle du même périphérique que le micro, sinon le défaut.
   let eveil = null;
   async function garderEveille(on) {
     if (!on) { if (eveil) { try { await eveil.close(); } catch {} eveil = null; } return; }
     if (eveil) return;
     eveil = new AudioContext();
-    const buf = eveil.createBuffer(1, eveil.sampleRate * 2, eveil.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.0001;
-    const src = eveil.createBufferSource();
-    src.buffer = buf; src.loop = true;
-    src.connect(eveil.destination);
-    src.start();
+    // sinusoïde à 8 Hz (infrason : aucun haut-parleur de casque ne la rend audible, contrairement au bruit blanc,
+    // qui s'entendait comme un souffle), amplitude -50 dBFS pour être détectée comme « signal » par le casque
+    const osc = eveil.createOscillator();
+    osc.type = 'sine'; osc.frequency.value = 8;
+    const g = eveil.createGain(); g.gain.value = 0.003;
+    osc.connect(g).connect(eveil.destination);
+    osc.start();
     try {
       const devs = await navigator.mediaDevices.enumerateDevices();
       const micId = await pickDeviceId(wantedDeviceId);
