@@ -55,6 +55,7 @@ const DEFAULTS = {
     noiseReduction: 'near_field',
     microphoneId: '',
     keepMicrophoneOpen: false,
+    keepHeadsetAwake: false, // casque sans fil : signal inaudible en sortie pour éviter sa mise en veille
     stopDelayMs: 150,
   },
   hotkeys: {

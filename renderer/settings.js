@@ -189,6 +189,7 @@
   $('t_phonetic').checked = t.phoneticCorrections !== false;
   $('t_noise').value = t.noiseReduction || 'none';
   $('t_keepOpen').checked = !!t.keepMicrophoneOpen;
+  $('t_keepAwake').checked = !!t.keepHeadsetAwake;
 
   async function fillMics() {
     try {
@@ -217,9 +218,10 @@
       noiseReduction: $('t_noise').value,
       microphoneId: $('t_mic').value,
       keepMicrophoneOpen: $('t_keepOpen').checked,
+      keepHeadsetAwake: $('t_keepAwake').checked,
     },
   });
-  for (const id of ['t_languages', 't_prompt', 't_keywords', 't_corrections', 't_phonetic', 't_noise', 't_mic', 't_keepOpen']) $(id).addEventListener('change', saveTranscription);
+  for (const id of ['t_languages', 't_prompt', 't_keywords', 't_corrections', 't_phonetic', 't_noise', 't_mic', 't_keepOpen', 't_keepAwake']) $(id).addEventListener('change', saveTranscription);
 
   // --- SpeechMike ---
   $('micPair').addEventListener('click', () => api.requestPairMicrophone());

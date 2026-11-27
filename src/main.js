@@ -240,6 +240,7 @@ function createBar() {
     sendDraft();
     send('usage', store.usage);
     if (store.settings.transcription.keepMicrophoneOpen) barWin.webContents.send('capture', { cmd: 'open', deviceId: store.settings.transcription.microphoneId });
+    barWin.webContents.send('capture', { cmd: 'awake', on: !!store.settings.transcription.keepHeadsetAwake });
   });
 }
 
@@ -911,6 +912,7 @@ function setupIpc() {
       rt.close(); // la session OpenAI sera rouverte avec la nouvelle configuration
       }
     if (barWin) barWin.webContents.send('capture', { cmd: s.transcription.keepMicrophoneOpen ? 'open' : 'close', deviceId: s.transcription.microphoneId });
+    if (barWin) barWin.webContents.send('capture', { cmd: 'awake', on: !!s.transcription.keepHeadsetAwake });
     if (partial && partial.launchAtLogin !== undefined) applyLaunchAtLogin();
     setState(state);
     if (tray) tray.refresh();
